@@ -1,13 +1,15 @@
-import {Body, Controller, Get, Param, Post, UseGuards, UsePipes, ValidationPipe} from '@nestjs/common';
+import {Body, Controller, Get, Param, Post, UseGuards, UsePipes} from '@nestjs/common';
 import {CreateUserDTO} from "./dto/create-user.dto";
 import { AddRoleDto } from "./dto/add.role.dto";
 import { UsersService } from './users.service';
 import {ApiOperation, ApiResponse, ApiTags} from "@nestjs/swagger";
 import {User} from "./users.model";
-import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { Roles } from 'src/auth/roles-auth.decorator';
 import {RolesGuard} from "../auth/roles.guard";
 import { BanUserDto } from './dto/ban-user.dto';
+import { ValidationPipe } from '../pipes/validation.pipe'
+
+
 
 @ApiTags('Пользователи')
 @Controller('users')
@@ -18,11 +20,11 @@ export class UsersController {
 
     @ApiOperation({summary: 'Создание пользователя'})
     @ApiResponse({status: 200, type: User})
-    @UsePipes(ValidationPipe)
     @Post()
     create(@Body() userDto: CreateUserDTO) {
         return this.usersService.createUser(userDto);
     }
+
     @ApiOperation({summary: 'Получить всех пользователей'})
     @ApiResponse({status: 200, type: [User]})
     @UseGuards(RolesGuard)
