@@ -6,8 +6,10 @@ import { UsersController } from 'src/users/users.controller';
 import { User } from 'src/users/users.model';
 
 interface PostCreationAttrs {
-    email: string;
-    password: string;
+    title: string;
+    content: string;
+    userId: number;
+    image: string;
 }
 
 @Table({tableName: 'posts'})
