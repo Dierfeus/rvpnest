@@ -12,11 +12,14 @@ import { PostsModule } from './posts/posts.module';
 import {Post} from "./posts/post.model";
 import { FilesModule } from './files/files.module';
 import {ServeStaticModule} from "@nestjs/serve-static";
+import { CategoriesModule } from './categories/categories.module';
+import { CharacteristicsController } from './characteristics/characteristics.controller';
+import { CharacteristicsModule } from './characteristics/characteristics.module';
 import * as path from "path";
 
 
 @Module({
-    controllers: [],
+    controllers: [CharacteristicsController],
     providers: [],
     imports: [
         ConfigModule.forRoot({
@@ -40,6 +43,8 @@ import * as path from "path";
         AuthModule,
         PostsModule,
         FilesModule,
+        CategoriesModule,
+        CharacteristicsModule,
     ]
 })
 export class AppModule {}
