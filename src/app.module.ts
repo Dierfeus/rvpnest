@@ -15,6 +15,7 @@ import {ServeStaticModule} from "@nestjs/serve-static";
 import { CategoriesModule } from './categories/categories.module';
 import { CharacteristicsController } from './characteristics/characteristics.controller';
 import { CharacteristicsModule } from './characteristics/characteristics.module';
+import { ProductsModule } from './products/products.module';
 import * as path from "path";
 
 
@@ -45,6 +46,7 @@ import * as path from "path";
         FilesModule,
         CategoriesModule,
         CharacteristicsModule,
+        ProductsModule,
     ]
 })
 export class AppModule {}
