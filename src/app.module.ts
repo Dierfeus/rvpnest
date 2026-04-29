@@ -16,6 +16,8 @@ import { CategoriesModule } from './categories/categories.module';
 import { CharacteristicsController } from './characteristics/characteristics.controller';
 import { CharacteristicsModule } from './characteristics/characteristics.module';
 import { ProductsModule } from './products/products.module';
+import { DiscountsModule } from './discounts/discounts.module';
+import { OrdersModule } from './orders/orders.module';
 import * as path from "path";
 
 
@@ -47,6 +49,8 @@ import * as path from "path";
         CategoriesModule,
         CharacteristicsModule,
         ProductsModule,
+        DiscountsModule,
+        OrdersModule,
     ]
 })
 export class AppModule {}
