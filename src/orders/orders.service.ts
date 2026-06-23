@@ -2,7 +2,7 @@ import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Order } from './order.model';
 import { OrderItem } from './order-item.model';
-import { CartItem } from './cart-item.model';
+import { CartItem } from '../cart/cart-item.model';
 import { OrderDelivery } from './order-delivery.model';
 import { OrderStatus } from './order-status.model';
 import { AddToCartDto } from './dto/add-to-cart.dto';
