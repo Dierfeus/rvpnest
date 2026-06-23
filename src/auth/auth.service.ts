@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UsersService } from "../users/users.service";
 import { CreateUserDTO } from '../users/dto/create-user.dto';
 import { LoginUserDto } from '../users/dto/login-user.dto';
-import { User } from '../users/users.model'; // ✅ Добавляем импорт модели User
+import { User } from '../users/users.model';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -15,17 +15,16 @@ export class AuthService {
 
     async login(userDto: LoginUserDto) {
         const user = await this.validateUser(userDto);
-        return this.generateToken(user);
+        const userWithRoles = await this.userService.getUserID(user.id);
+        return this.generateToken(userWithRoles);
     }
 
     async registration(userDto: CreateUserDTO) {
-        // Проверка email
         const candidateByEmail = await this.userService.getUserByEmail(userDto.email);
         if (candidateByEmail) {
             throw new HttpException('Пользователь с таким email уже существует', HttpStatus.BAD_REQUEST);
         }
 
-        // Проверка телефона
         const candidateByPhone = await this.userService.getUserByPhone(userDto.phone);
         if (candidateByPhone) {
             throw new HttpException('Пользователь с таким номером телефона уже существует', HttpStatus.BAD_REQUEST);
@@ -36,43 +35,46 @@ export class AuthService {
             ...userDto,
             password: hashPassword
         });
-        return this.generateToken(user);
+
+        const userWithRoles = await this.userService.getUserID(user.id);
+        return this.generateToken(userWithRoles);
     }
 
     private async generateToken(user: User) {
+        // ✅ Извлекаем только value из ролей
+        const userData = user.toJSON();
+        const roles = userData.roles?.map(role => role.value) || [];
+
         const payload = {
-            email: user.email,
-            id: user.id,
-            roles: user.roles,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            phone: user.phone
+            email: userData.email,
+            id: userData.id,
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            phone: userData.phone,
+            roles: roles // ✅ Теперь это массив строк: ['admin']
         };
+
         return {
             token: this.jwtService.sign(payload),
             user: {
-                id: user.id,
-                firstName: user.firstName,
-                lastName: user.lastName,
-                email: user.email,
-                phone: user.phone,
-                roles: user.roles
+                id: userData.id,
+                firstName: userData.firstName,
+                lastName: userData.lastName,
+                email: userData.email,
+                phone: userData.phone,
+                roles: roles // ✅ Тоже массив строк
             }
         };
     }
 
     private async validateUser(userDto: LoginUserDto): Promise<User> {
-        // Пытаемся найти пользователя по email или телефону
         let user: User | null = null;
 
-        // Проверяем, является ли логин email'ом
         const isEmail = userDto.login.includes('@') && userDto.login.includes('.');
 
         if (isEmail) {
-            // Ищем по email
             user = await this.userService.getUserByEmail(userDto.login);
         } else {
-            // Ищем по телефону
             user = await this.userService.getUserByPhone(userDto.login);
         }
 
@@ -82,11 +84,11 @@ export class AuthService {
             });
         }
 
-        // Проверяем пароль
         const passwordEquals = await bcrypt.compare(userDto.password, user.password);
         if (!passwordEquals) {
             throw new UnauthorizedException({ message: 'Неверный пароль' });
         }
+
         if (user.banned) {
             throw new UnauthorizedException({
                 message: `Ваш аккаунт заблокирован. Причина: ${user.banReason || 'Не указана'}`

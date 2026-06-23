@@ -18,11 +18,6 @@ export class UsersService {
     ) {}
 
     async createUser(dto: CreateUserDTO) {
-        console.log('📝 createUser получил dto:', dto);
-        console.log('📝 createUser получил пароль:', dto.password);
-        console.log('📝 createUser получил пароль (длина):', dto.password?.length);
-
-        // Проверка email
         const existingEmail = await this.userRepository.findOne({
             where: { email: dto.email }
         });
@@ -30,7 +25,6 @@ export class UsersService {
             throw new HttpException('Пользователь с таким email уже существует', HttpStatus.BAD_REQUEST);
         }
 
-        // Проверка телефона
         const existingPhone = await this.userRepository.findOne({
             where: { phone: dto.phone }
         });
@@ -45,7 +39,7 @@ export class UsersService {
             password: dto.password
         });
 
-        console.log('📝 createUser сохранил пользователя:', {
+        console.log('createUser сохранил пользователя:', {
             id: user.id,
             email: user.email,
             passwordHash: user.password,
@@ -86,30 +80,40 @@ export class UsersService {
 
     async getUserID(id: number) {
         const user = await this.userRepository.findByPk(id, {
-            include: { all: true },
+            include: [{ all: true }],
             attributes: { exclude: ['password'] }
         });
         if (!user) {
             throw new HttpException('Пользователь не найден', HttpStatus.NOT_FOUND);
         }
+        if (user.dataValues?.roles) {
+            user.roles = user.dataValues.roles;
+        }
+
         return user;
     }
 
     async getUserByEmail(email: string) {
         const user = await this.userRepository.findOne({
             where: { email },
-            include: { all: true }
+            include: [{ all: true }]
         });
-        if (user) user.roles = user.dataValues.roles
+        if (user && user.dataValues?.roles) {
+            user.roles = user.dataValues.roles;
+        }
+
         return user;
     }
 
     async getUserByPhone(phone: string) {
         const user = await this.userRepository.findOne({
             where: { phone },
-            include: { all: true }
+            include: [{ all: true }]
         });
-        if (user) user.roles = user.dataValues.roles
+        if (user && user.dataValues?.roles) {
+            user.roles = user.dataValues.roles;
+        }
+
         return user;
     }
 
