@@ -100,7 +100,8 @@ export class UsersService {
             where: { email },
             include: { all: true }
         });
-        return user; // может быть null
+        if (user) user.roles = user.dataValues.roles
+        return user;
     }
 
     async getUserByPhone(phone: string) {
@@ -108,7 +109,8 @@ export class UsersService {
             where: { phone },
             include: { all: true }
         });
-        return user; // может быть null
+        if (user) user.roles = user.dataValues.roles
+        return user;
     }
 
     async updateUser(id: number, dto: UpdateUserDto) {
