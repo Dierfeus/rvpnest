@@ -21,7 +21,8 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
 export class RolesController {
-    constructor(private roleService: RolesService) {}
+    constructor(private roleService: RolesService) {
+    }
 
     @Post()
     @ApiOperation({
@@ -57,7 +58,7 @@ export class RolesController {
     @ApiBadRequestResponse({
         description: 'Некорректные данные или роль уже существует'
     })
-    @ApiForbiddenResponse({ description: 'Недостаточно прав' })
+    @ApiForbiddenResponse({description: 'Недостаточно прав'})
     create(@Body() dto: CreateRoleDto) {
         return this.roleService.createRole(dto);
     }
@@ -89,7 +90,7 @@ export class RolesController {
             ]
         }
     })
-    @ApiForbiddenResponse({ description: 'Недостаточно прав' })
+    @ApiForbiddenResponse({description: 'Недостаточно прав'})
     getAll() {
         return this.roleService.getAllRoles();
     }
@@ -119,8 +120,8 @@ export class RolesController {
             }
         }
     })
-    @ApiNotFoundResponse({ description: 'Роль не найдена' })
-    @ApiForbiddenResponse({ description: 'Недостаточно прав' })
+    @ApiNotFoundResponse({description: 'Роль не найдена'})
+    @ApiForbiddenResponse({description: 'Недостаточно прав'})
     getById(@Param('id') id: number) {
         return this.roleService.getRoleById(id);
     }
@@ -150,8 +151,8 @@ export class RolesController {
             }
         }
     })
-    @ApiNotFoundResponse({ description: 'Роль не найдена' })
-    @ApiForbiddenResponse({ description: 'Недостаточно прав' })
+    @ApiNotFoundResponse({description: 'Роль не найдена'})
+    @ApiForbiddenResponse({description: 'Недостаточно прав'})
     getByValue(@Param('value') value: string) {
         return this.roleService.getRoleByValue(value);
     }
@@ -194,9 +195,9 @@ export class RolesController {
             }
         }
     })
-    @ApiNotFoundResponse({ description: 'Роль не найдена' })
-    @ApiBadRequestResponse({ description: 'Некорректные данные' })
-    @ApiForbiddenResponse({ description: 'Недостаточно прав' })
+    @ApiNotFoundResponse({description: 'Роль не найдена'})
+    @ApiBadRequestResponse({description: 'Некорректные данные'})
+    @ApiForbiddenResponse({description: 'Недостаточно прав'})
     update(
         @Param('id') id: number,
         @Body() dto: UpdateRoleDto
@@ -205,7 +206,6 @@ export class RolesController {
     }
 
     @Delete(':id')
-    @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
         summary: 'Удалить роль',
         description: 'Полное удаление роли из системы. Доступно только администраторам.'
@@ -217,13 +217,27 @@ export class RolesController {
         example: 1,
         required: true
     })
-    @ApiResponse({
-        status: HttpStatus.NO_CONTENT,
-        description: 'Роль успешно удалена'
+    @ApiOkResponse({
+        description: 'Роль успешно удалена',
+        schema: {
+            type: 'object',
+            properties: {
+                message: {type: 'string', example: 'Роль admin успешно удалена'},
+                role: {
+                    type: 'object',
+                    properties: {
+                        id: {type: 'number', example: 1},
+                        value: {type: 'string', example: 'admin'},
+                        description: {type: 'string', example: 'Администратор системы'}
+                    }
+                }
+            }
+        }
     })
-    @ApiNotFoundResponse({ description: 'Роль не найдена' })
-    @ApiForbiddenResponse({ description: 'Недостаточно прав' })
-    delete(@Param('id') id: number) {
+    @ApiNotFoundResponse({description: 'Роль не найдена'})
+    @ApiForbiddenResponse({description: 'Недостаточно прав'})
+    async delete(@Param('id') id: number) {
         return this.roleService.deleteRole(id);
     }
+
 }
