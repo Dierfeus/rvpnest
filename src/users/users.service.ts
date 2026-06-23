@@ -18,6 +18,10 @@ export class UsersService {
     ) {}
 
     async createUser(dto: CreateUserDTO) {
+        console.log('📝 createUser получил dto:', dto);
+        console.log('📝 createUser получил пароль:', dto.password);
+        console.log('📝 createUser получил пароль (длина):', dto.password?.length);
+
         // Проверка email
         const existingEmail = await this.userRepository.findOne({
             where: { email: dto.email }
@@ -33,11 +37,19 @@ export class UsersService {
         if (existingPhone) {
             throw new HttpException('Пользователь с таким номером телефона уже существует', HttpStatus.BAD_REQUEST);
         }
-
-        const hashPassword = await bcrypt.hash(dto.password, 5);
         const user = await this.userRepository.create({
-            ...dto,
-            password: hashPassword
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            phone: dto.phone,
+            email: dto.email,
+            password: dto.password
+        });
+
+        console.log('📝 createUser сохранил пользователя:', {
+            id: user.id,
+            email: user.email,
+            passwordHash: user.password,
+            passwordLength: user.password?.length
         });
 
         const role = await this.roleService.getRoleByValue('user');
@@ -51,7 +63,6 @@ export class UsersService {
     async getAllUsers(limit: number = 10, offset: number = 0, search?: string) {
         const where: any = {};
 
-        // Поиск по нескольким полям
         if (search) {
             where[Op.or] = [
                 { email: { [Op.iLike]: `%${search}%` } },
@@ -65,7 +76,7 @@ export class UsersService {
             where,
             include: { all: true },
             attributes: { exclude: ['password'] },
-            limit: Math.min(limit, 100), // Максимум 100 записей за раз
+            limit: Math.min(limit, 100),
             offset,
             order: [['id', 'DESC']]
         };
@@ -89,10 +100,7 @@ export class UsersService {
             where: { email },
             include: { all: true }
         });
-        if (!user) {
-            throw new HttpException('Пользователь не найден', HttpStatus.NOT_FOUND);
-        }
-        return user;
+        return user; // может быть null
     }
 
     async getUserByPhone(phone: string) {
@@ -100,10 +108,7 @@ export class UsersService {
             where: { phone },
             include: { all: true }
         });
-        if (!user) {
-            throw new HttpException('Пользователь не найден', HttpStatus.NOT_FOUND);
-        }
-        return user;
+        return user; // может быть null
     }
 
     async updateUser(id: number, dto: UpdateUserDto) {
@@ -112,7 +117,6 @@ export class UsersService {
             throw new HttpException('Пользователь не найден', HttpStatus.NOT_FOUND);
         }
 
-        // Проверка уникальности телефона
         if (dto.phone) {
             const existingPhone = await this.userRepository.findOne({
                 where: { phone: dto.phone }
@@ -122,7 +126,6 @@ export class UsersService {
             }
         }
 
-        // Проверка уникальности email
         if (dto.email) {
             const existingEmail = await this.userRepository.findOne({
                 where: { email: dto.email }
@@ -148,13 +151,11 @@ export class UsersService {
             throw new HttpException('Пользователь не найден', HttpStatus.NOT_FOUND);
         }
 
-        // Проверяем старый пароль
         const isPasswordValid = await bcrypt.compare(dto.oldPassword, user.password);
         if (!isPasswordValid) {
             throw new HttpException('Неверный текущий пароль', HttpStatus.BAD_REQUEST);
         }
 
-        // Хешируем новый пароль
         const hashedPassword = await bcrypt.hash(dto.newPassword, 5);
         await user.update({ password: hashedPassword });
 
@@ -182,7 +183,6 @@ export class UsersService {
     }
 
     async updateUserRoles(userId: number, roleIds: number[]) {
-        // Проверяем существование пользователя
         const user = await this.userRepository.findByPk(userId, {
             include: ['roles']
         });
@@ -190,12 +190,10 @@ export class UsersService {
             throw new HttpException('Пользователь не найден', HttpStatus.NOT_FOUND);
         }
 
-        // Проверяем, что массив не пустой
         if (roleIds.length === 0) {
             throw new HttpException('У пользователя должна быть хотя бы одна роль', HttpStatus.BAD_REQUEST);
         }
 
-        // Проверяем, что все роли существуют
         const roles = await Promise.all(
             roleIds.map(async (roleId) => {
                 const role = await this.roleService.getRoleById(roleId);
@@ -206,10 +204,7 @@ export class UsersService {
             })
         );
 
-        // Полностью заменяем роли пользователя
         await user.$set('roles', roleIds);
-
-        // Получаем обновленные роли пользователя
         const updatedRoles = await user.$get('roles');
 
         return {
@@ -258,5 +253,4 @@ export class UsersService {
         await user.destroy();
         return { message: 'Пользователь удален' };
     }
-
 }

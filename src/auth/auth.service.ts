@@ -2,6 +2,8 @@ import { HttpException, HttpStatus, Injectable, UnauthorizedException } from '@n
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from "../users/users.service";
 import { CreateUserDTO } from '../users/dto/create-user.dto';
+import { LoginUserDto } from '../users/dto/login-user.dto';
+import { User } from '../users/users.model'; // ✅ Добавляем импорт модели User
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -11,7 +13,7 @@ export class AuthService {
         private jwtService: JwtService
     ) {}
 
-    async login(userDto: CreateUserDTO) {
+    async login(userDto: LoginUserDto) {
         const user = await this.validateUser(userDto);
         return this.generateToken(user);
     }
@@ -37,7 +39,7 @@ export class AuthService {
         return this.generateToken(user);
     }
 
-    private async generateToken(user) {
+    private async generateToken(user: User) {
         const payload = {
             email: user.email,
             id: user.id,
@@ -48,20 +50,49 @@ export class AuthService {
         };
         return {
             token: this.jwtService.sign(payload),
+            user: {
+                id: user.id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email,
+                phone: user.phone,
+                roles: user.roles
+            }
         };
     }
 
-    private async validateUser(userDto: CreateUserDTO) {
-        // Используем email для входа
-        const user = await this.userService.getUserByEmail(userDto.email);
-        if (!user) {
-            throw new UnauthorizedException({ message: 'Неверный email или пароль.' });
+    private async validateUser(userDto: LoginUserDto): Promise<User> {
+        // Пытаемся найти пользователя по email или телефону
+        let user: User | null = null;
+
+        // Проверяем, является ли логин email'ом
+        const isEmail = userDto.login.includes('@') && userDto.login.includes('.');
+
+        if (isEmail) {
+            // Ищем по email
+            user = await this.userService.getUserByEmail(userDto.login);
+        } else {
+            // Ищем по телефону
+            user = await this.userService.getUserByPhone(userDto.login);
         }
 
-        const passwordEquals = await bcrypt.compare(userDto.password, user.password);
-        if (passwordEquals) {
-            return user;
+        if (!user) {
+            throw new UnauthorizedException({
+                message: 'Пользователь с таким email или телефоном не найден'
+            });
         }
-        throw new UnauthorizedException({ message: 'Неверный email или пароль.' });
+
+        // Проверяем пароль
+        const passwordEquals = await bcrypt.compare(userDto.password, user.password);
+        if (!passwordEquals) {
+            throw new UnauthorizedException({ message: 'Неверный пароль' });
+        }
+        if (user.banned) {
+            throw new UnauthorizedException({
+                message: `Ваш аккаунт заблокирован. Причина: ${user.banReason || 'Не указана'}`
+            });
+        }
+
+        return user;
     }
 }

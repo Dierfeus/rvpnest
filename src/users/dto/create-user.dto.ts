@@ -23,7 +23,7 @@ export class CreateUserDTO {
     readonly lastName: string;
 
     @ApiProperty({
-        example: '+7 (999) 123-45-67',
+        example: '+79991234567',
         description: 'Номер телефона в международном формате',
         pattern: '^\\+?[1-9]\\d{1,14}$'
     })

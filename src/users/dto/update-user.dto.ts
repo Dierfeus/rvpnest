@@ -27,7 +27,7 @@ export class UpdateUserDto {
     readonly lastName?: string;
 
     @ApiProperty({
-        example: '+7 (999) 123-45-67',
+        example: '+79991234567',
         description: 'Новый номер телефона',
         required: false,
         pattern: '^\\+?[1-9]\\d{1,14}$'
