@@ -7,12 +7,14 @@ import { ProductsService } from './products.service';
 import { ProductsController } from './products.controller';
 import { CategoriesModule } from '../categories/categories.module';
 import { CharacteristicsModule } from '../characteristics/characteristics.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
     SequelizeModule.forFeature([Product, ProductCharacteristic, Entrance]),
     CategoriesModule,
     CharacteristicsModule,
+    AuthModule,
   ],
   providers: [ProductsService],
   controllers: [ProductsController],

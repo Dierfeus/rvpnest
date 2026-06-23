@@ -1,7 +1,7 @@
 import { Column, DataType, Model, Table, ForeignKey, BelongsTo, BelongsToMany, HasMany } from 'sequelize-typescript';
 import { Category } from '../categories/categories.model';
 import { CharacteristicValue } from '../characteristics/characteristic-value.model';
-import { ProductCharacteristic } from './product-characteristic.model';
+import { ProductCharacteristic } from './dto/product-characteristic.model';
 import { Entrance } from './entrance.model';
 
 interface ProductCreationAttrs {

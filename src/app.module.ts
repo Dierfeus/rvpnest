@@ -22,7 +22,7 @@ import { Category } from './categories/categories.model';
 import { Characteristic } from './characteristics/characteristics.model';
 import { CharacteristicValue } from './characteristics/characteristic-value.model';
 import { Product } from './products/products.model';
-import { ProductCharacteristic } from './products/product-characteristic.model';
+import { ProductCharacteristic } from './products/dto/product-characteristic.model';
 import { Entrance } from './products/entrance.model';
 import { Discount } from './discounts/discount.model';
 import { DiscountType } from './discounts/discount-type.model';

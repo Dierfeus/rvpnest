@@ -2,13 +2,17 @@ import { Column, DataType, ForeignKey, Model, Table } from 'sequelize-typescript
 import { Product } from './products.model';
 import { CharacteristicValue } from '../characteristics/characteristic-value.model';
 
-@Table({ tableName: 'productCharacteristics', timestamps: false })
+@Table({ tableName: 'product_characteristics', timestamps: true })
 export class ProductCharacteristic extends Model<ProductCharacteristic> {
-  @ForeignKey(() => Product)
-  @Column({ type: DataType.INTEGER, primaryKey: true })
-  id_product: number;
+    @Column({ type: DataType.INTEGER, primaryKey: true, autoIncrement: true })
+    declare id: number;
 
-  @ForeignKey(() => CharacteristicValue)
-  @Column({ type: DataType.INTEGER, primaryKey: true })
-  id_characters_value: number;
+    @ForeignKey(() => Product)
+    @Column({ type: DataType.INTEGER })
+    declare id_product: number;
+
+    @ForeignKey(() => CharacteristicValue)
+    @Column({ type: DataType.INTEGER })
+    declare id_characters_value: number;
+
 }

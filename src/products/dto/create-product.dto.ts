@@ -6,7 +6,7 @@ export class CreateProductDto {
   @IsString()
   readonly name: string;
 
-  @ApiProperty({ example: 1 })
+  @ApiProperty({ example: 4 })
   @IsNumber()
   readonly id_category: number;
 
