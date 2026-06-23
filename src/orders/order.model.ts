@@ -9,6 +9,9 @@ interface OrderCreationAttrs {
   id_buyer: number;
   date: Date;
   id_discount?: number;
+  total_amount: number;
+  shipping_address: string;
+  payment_method: string;
 }
 
 @Table({ tableName: 'orders', timestamps: false })
@@ -28,8 +31,20 @@ export class Order extends Model<Order, OrderCreationAttrs> {
   date: Date;
 
   @ForeignKey(() => Discount)
-  @Column({ type: DataType.INTEGER })
+  @Column({ type: DataType.INTEGER, allowNull: true })
   id_discount: number;
+
+  @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
+  total_amount: number;
+
+  @Column({ type: DataType.TEXT, allowNull: false })
+  shipping_address: string;
+
+  @Column({ type: DataType.STRING, allowNull: false })
+  payment_method: string;
+
+  @Column({ type: DataType.TEXT, allowNull: true })
+  comment: string;
 
   @BelongsTo(() => User, { as: 'seller', foreignKey: 'id_seller' })
   seller: User;
