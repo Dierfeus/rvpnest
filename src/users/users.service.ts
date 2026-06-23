@@ -216,6 +216,11 @@ export class UsersService {
     }
 
     async ban(dto: BanUserDto) {
+        // Проверяем, что dto содержит userId
+        if (!dto.userId) {
+            throw new HttpException('ID пользователя обязателен', HttpStatus.BAD_REQUEST);
+        }
+
         const user = await this.userRepository.findByPk(dto.userId);
         if (!user) {
             throw new HttpException('Пользователь не найден', HttpStatus.NOT_FOUND);
@@ -228,7 +233,16 @@ export class UsersService {
         user.banned = true;
         user.banReason = dto.banReason;
         await user.save();
-        return { message: 'Пользователь забанен', user };
+
+        return {
+            message: 'Пользователь забанен',
+            user: {
+                id: user.id,
+                email: user.email,
+                banned: user.banned,
+                banReason: user.banReason
+            }
+        };
     }
 
     async unban(id: number) {

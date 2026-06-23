@@ -296,7 +296,7 @@ export class UsersController {
         description: 'Пользователь успешно забанен'
     })
     @ApiNotFoundResponse({ description: 'Пользователь не найден' })
-    @ApiBadRequestResponse({ description: 'Пользователь уже забанен' })
+    @ApiBadRequestResponse({ description: 'Некорректные данные' })
     ban(@Body() dto: BanUserDto) {
         return this.usersService.ban(dto);
     }
