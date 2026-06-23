@@ -18,6 +18,6 @@ import { AuthModule } from '../auth/auth.module';
   ],
   providers: [ProductsService],
   controllers: [ProductsController],
-  exports: [ProductsService],
+  exports: [ProductsService, SequelizeModule],
 })
 export class ProductsModule {}

@@ -9,6 +9,7 @@ import { AddProductCharacteristicDto } from './dto/add-product-characteristic.dt
 import { CreateEntranceDto } from './dto/create-entrance.dto';
 import { CategoriesService } from '../categories/categories.service';
 import { CharacteristicsService } from '../characteristics/characteristics.service';
+import { Op } from 'sequelize';
 
 @Injectable()
 export class ProductsService {
@@ -28,8 +29,34 @@ export class ProductsService {
     return this.productRepository.create(dto as any);
   }
 
-  async getAll() {
+  async getAll(filters?: {
+    categoryId?: number;
+    minPrice?: number;
+    maxPrice?: number;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const where: any = { is_active: true };
+
+    if (filters?.categoryId) {
+      where.id_category = filters.categoryId;
+    }
+
+    if (filters?.minPrice !== undefined) {
+      where.price = { [Op.gte]: filters.minPrice };
+    }
+
+    if (filters?.maxPrice !== undefined) {
+      where.price = { ...where.price, [Op.lte]: filters.maxPrice };
+    }
+
+    if (filters?.search) {
+      where.name = { [Op.iLike]: `%${filters.search}%` };
+    }
+
     return this.productRepository.findAll({
+      where,
       include: [
         'category',
         {
@@ -38,6 +65,9 @@ export class ProductsService {
         },
         'entrances'
       ],
+      limit: filters?.limit || 20,
+      offset: filters?.offset || 0,
+      order: [['createdAt', 'DESC']]
     });
   }
 
@@ -58,6 +88,14 @@ export class ProductsService {
     return product;
   }
 
+  async getProductPrice(id: number): Promise<number> {
+    const product = await this.productRepository.findByPk(id);
+    if (!product) {
+      throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
+    }
+    return product.price;
+  }
+
   async update(id: number, dto: UpdateProductDto) {
     const product = await this.getOne(id);
     await product.update(dto);
@@ -70,19 +108,16 @@ export class ProductsService {
     return { message: 'Товар удален' };
   }
 
-  // ✅ Исправленный метод с явной проверкой
   async addCharacteristics(dto: AddProductCharacteristicDto) {
     const product = await this.productRepository.findByPk(dto.id_product);
     if (!product) {
       throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
     }
 
-    // ✅ Проверяем, что characteristicValueIds существует и это массив
     if (!dto.characteristicValueIds || !Array.isArray(dto.characteristicValueIds)) {
       throw new HttpException('Не передан массив значений характеристик', HttpStatus.BAD_REQUEST);
     }
 
-    // Проверяем, что все значения характеристик существуют
     for (const valueId of dto.characteristicValueIds) {
       const value = await this.characteristicsService.getCharacteristicValueById(valueId);
       if (!value) {
@@ -93,12 +128,10 @@ export class ProductsService {
       }
     }
 
-    // Удаляем старые связи
     await this.productCharacteristicRepository.destroy({
       where: { id_product: dto.id_product }
     });
 
-    // Добавляем новые связи
     for (const valueId of dto.characteristicValueIds) {
       await this.productCharacteristicRepository.create({
         id_product: dto.id_product,
@@ -120,6 +153,10 @@ export class ProductsService {
       throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
     }
 
+    await product.update({
+      stock: product.stock + 1
+    });
+
     return this.entranceRepository.create({
       id_product: dto.id_product,
       date: new Date(dto.date),
@@ -132,5 +169,27 @@ export class ProductsService {
       where: { id_product },
       include: ['product']
     });
+  }
+
+  async checkStock(productId: number, quantity: number = 1): Promise<boolean> {
+    const product = await this.productRepository.findByPk(productId);
+    if (!product) {
+      throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
+    }
+    return product.stock >= quantity && product.is_active;
+  }
+
+  async decreaseStock(productId: number, quantity: number = 1) {
+    const product = await this.productRepository.findByPk(productId);
+    if (!product) {
+      throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
+    }
+    if (product.stock < quantity) {
+      throw new HttpException('Недостаточно товара на складе', HttpStatus.BAD_REQUEST);
+    }
+    await product.update({
+      stock: product.stock - quantity
+    });
+    return product;
   }
 }

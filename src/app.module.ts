@@ -17,7 +17,6 @@ import { DiscountsModule } from './discounts/discounts.module';
 import { OrdersModule } from './orders/orders.module';
 import * as path from "path";
 
-// Импортируем все модели
 import { Category } from './categories/categories.model';
 import { Characteristic } from './characteristics/characteristics.model';
 import { CharacteristicValue } from './characteristics/characteristic-value.model';
@@ -32,6 +31,7 @@ import { CartItem } from './cart/cart-item.model';
 import { OrderDelivery } from './orders/order-delivery.model';
 import { OrderStatus } from './orders/order-status.model';
 import {CartModule} from "./cart/cart.module";
+import { ProductDiscount } from './discounts/product-discount.model';
 
 @Module({
     imports: [
@@ -59,6 +59,7 @@ import {CartModule} from "./cart/cart.module";
                 ProductCharacteristic,
                 Entrance,
                 Discount,
+                ProductDiscount,
                 DiscountType,
                 Order,
                 OrderItem,
