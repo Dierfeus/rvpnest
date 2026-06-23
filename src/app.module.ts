@@ -11,7 +11,6 @@ import { AuthModule } from './auth/auth.module';
 import { FilesModule } from './files/files.module';
 import { ServeStaticModule } from "@nestjs/serve-static";
 import { CategoriesModule } from './categories/categories.module';
-import { CharacteristicsController } from './characteristics/characteristics.controller';
 import { CharacteristicsModule } from './characteristics/characteristics.module';
 import { ProductsModule } from './products/products.module';
 import { DiscountsModule } from './discounts/discounts.module';
@@ -32,10 +31,9 @@ import { OrderItem } from './orders/order-item.model';
 import { CartItem } from './cart/cart-item.model';
 import { OrderDelivery } from './orders/order-delivery.model';
 import { OrderStatus } from './orders/order-status.model';
+import {CartModule} from "./cart/cart.module";
 
 @Module({
-    controllers: [CharacteristicsController],
-    providers: [],
     imports: [
         ConfigModule.forRoot({
             envFilePath: `.${process.env.NODE_ENV}.env`,
@@ -51,7 +49,6 @@ import { OrderStatus } from './orders/order-status.model';
             password: process.env.POSTGRES_PASSWORD,
             database: process.env.POSTGRES_DB,
             models: [
-                // ✅ Добавляем ВСЕ модели
                 User,
                 Role,
                 UserRoles,
@@ -70,17 +67,18 @@ import { OrderStatus } from './orders/order-status.model';
                 OrderStatus,
             ],
             autoLoadModels: true,
-            synchronize: true,
+            synchronize: process.env.NODE_ENV !== 'production',
         }),
+        AuthModule,
         UsersModule,
         RolesModule,
-        AuthModule,
-        FilesModule,
+        CartModule,
+        OrdersModule,
+        ProductsModule,
         CategoriesModule,
         CharacteristicsModule,
-        ProductsModule,
         DiscountsModule,
-        OrdersModule,
+        FilesModule,
     ]
 })
 export class AppModule {}
