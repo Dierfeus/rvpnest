@@ -28,7 +28,6 @@ export class OrdersService {
     const transaction = await this.sequelize.transaction();
 
     try {
-      // 1. Получаем товары из корзины
       const cartItems = await this.cartService.getCartItemsByIds(
           dto.id_buyer,
           dto.cartItemIds
@@ -38,7 +37,6 @@ export class OrdersService {
         throw new HttpException('Выбранные товары не найдены в корзине', HttpStatus.BAD_REQUEST);
       }
 
-      // 2. Проверяем остатки
       const stockCheck = await this.productsService.checkMultipleStock(
           cartItems.map(item => ({
             productId: item.id_product,
@@ -62,8 +60,8 @@ export class OrdersService {
         id_product: number;
         quantity: number;
         price_at_time: number;
-      }[] = []; // ✅ Явно указываем тип
-      const productIds: number[] = []; // ✅ Явно указываем тип
+      }[] = [];
+      const productIds: number[] = [];
 
       for (const cartItem of cartItems) {
         const product = await this.productsService.getOne(cartItem.id_product);
@@ -79,9 +77,8 @@ export class OrdersService {
         });
       }
 
-      // 4. Применяем скидку
       let discountAmount = 0;
-      let discountId: number | null = null; // ✅ Исправляем тип
+      let discountId: number | null = null;
       let finalTotal = subtotal;
 
       if (dto.id_discount) {
@@ -98,12 +95,10 @@ export class OrdersService {
             finalTotal = subtotal - discountAmount;
           }
         } catch (error) {
-          // Если скидка невалидна, просто игнорируем её
           console.warn('Скидка не применена:', error.message);
         }
       }
 
-      // 5. Создаём заказ
       const order = await this.orderRepository.create({
         id_seller: dto.id_seller,
         id_buyer: dto.id_buyer,
@@ -117,7 +112,6 @@ export class OrdersService {
         comment: dto.comment || null,
       } as any, { transaction });
 
-      // 6. Создаём элементы заказа
       for (const item of orderItemsData) {
         await this.orderItemRepository.create({
           id_order: order.id_order,
@@ -127,7 +121,6 @@ export class OrdersService {
         } as any, { transaction });
       }
 
-      // 7. Списываем товары
       for (const cartItem of cartItems) {
         await this.productsService.decreaseStockWithLock(
             cartItem.id_product,
@@ -137,14 +130,12 @@ export class OrdersService {
         );
       }
 
-      // 8. Помечаем товары в корзине как купленные
       await this.cartService.purchaseCartWithTransaction(
           dto.id_buyer,
           dto.cartItemIds,
           transaction
       );
 
-      // 9. Добавляем начальный статус
       const initialStatus = await this.orderStatusRepository.findOne({
         where: { sort_order: 0 }
       });
@@ -158,7 +149,6 @@ export class OrdersService {
         } as any, { transaction });
       }
 
-      // 10. Увеличиваем счётчик использований скидки
       if (discountId) {
         await this.discountsService.incrementUsageCount(discountId, transaction);
       }

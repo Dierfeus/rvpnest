@@ -3,14 +3,13 @@ import {
     UseGuards, HttpCode, HttpStatus, Query, Req
 } from '@nestjs/common';
 import {
-    ApiTags, ApiOperation, ApiResponse, ApiBearerAuth,
+    ApiTags, ApiOperation, ApiBearerAuth,
     ApiParam, ApiQuery, ApiBody, ApiBadRequestResponse,
     ApiNotFoundResponse, ApiUnauthorizedResponse, ApiForbiddenResponse,
     ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse
 } from '@nestjs/swagger';
 import { CreateUserDTO } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
-import { AddRoleDto } from "./dto/add.role.dto";
 import { UsersService } from './users.service';
 import { User } from "./users.model";
 import { Roles } from 'src/auth/roles-auth.decorator';
@@ -27,7 +26,6 @@ import { UpdateUserRolesDto } from './dto/update-user-roles.dto';
 export class UsersController {
     constructor(private usersService: UsersService) {}
 
-    // ==================== PUBLIC ENDPOINTS ====================
     @Post()
     @ApiOperation({
         summary: 'Создать пользователя',
@@ -42,10 +40,6 @@ export class UsersController {
     create(@Body() userDto: CreateUserDTO) {
         return this.usersService.createUser(userDto);
     }
-
-    // ==================== PROTECTED ENDPOINTS (требуется авторизация) ====================
-
-    // -------- Для всех авторизованных пользователей --------
 
     @Get('profile')
     @UseGuards(JwtAuthGuard)
@@ -107,8 +101,6 @@ export class UsersController {
     deleteProfile(@Req() req: any) {
         return this.usersService.deleteUser(req.user.id);
     }
-
-    // -------- Для администраторов --------
 
     @Get()
     @UseGuards(JwtAuthGuard, RolesGuard)

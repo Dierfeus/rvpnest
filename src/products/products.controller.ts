@@ -23,8 +23,6 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 export class ProductsController {
   constructor(private productsService: ProductsService) {}
 
-  // ==================== ПУБЛИЧНЫЕ МАРШРУТЫ ====================
-
   @Get()
   @ApiOperation({
     summary: 'Получить все товары',

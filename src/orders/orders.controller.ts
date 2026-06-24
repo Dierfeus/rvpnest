@@ -23,7 +23,6 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 export class OrdersController {
   constructor(private ordersService: OrdersService) {}
 
-  // ==================== CREATE ====================
   @Post()
   @ApiOperation({
     summary: 'Создать заказ',
@@ -39,7 +38,6 @@ export class OrdersController {
     return this.ordersService.createOrder(dto);
   }
 
-  // ==================== READ ====================
   @Get()
   @Roles('admin')
   @UseGuards(RolesGuard)
@@ -137,7 +135,6 @@ export class OrdersController {
     return this.ordersService.getAllStatuses();
   }
 
-  // ==================== UPDATE ====================
   @Put(':id')
   @ApiOperation({
     summary: 'Обновить заказ',
@@ -185,7 +182,6 @@ export class OrdersController {
     return this.ordersService.updateOrderStatus(id, dto.id_status, dto.comment);
   }
 
-  // ==================== DELETE ====================
   @Delete(':id')
   @Roles('admin')
   @UseGuards(RolesGuard)

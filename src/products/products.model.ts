@@ -43,7 +43,7 @@ export class Product extends Model<Product, ProductCreationAttrs> {
   condition: string;
 
   @Column({ type: DataType.INTEGER, allowNull: true })
-  id_user: number; // Продавец
+  id_user: number;
 
   @Column({ type: DataType.INTEGER, defaultValue: 0 })
   stock: number;

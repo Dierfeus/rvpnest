@@ -23,8 +23,6 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 export class DiscountsController {
   constructor(private discountsService: DiscountsService) {}
 
-  // ==================== ТИПЫ СКИДОК ====================
-
   @Post('types')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
@@ -48,8 +46,6 @@ export class DiscountsController {
   getAllTypes() {
     return this.discountsService.getAllDiscountTypes();
   }
-
-  // ==================== СКИДКИ ====================
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)

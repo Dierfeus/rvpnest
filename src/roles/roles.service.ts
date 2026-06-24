@@ -22,7 +22,6 @@ export class RolesService {
         return this.roleRepository.findAll({ include: ['users'] });
     }
 
-    // ✅ ДОБАВЛЯЕМ ЭТОТ МЕТОД
     async getRoleById(id: number) {
         const role = await this.roleRepository.findByPk(id);
         if (!role) {
