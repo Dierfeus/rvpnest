@@ -25,10 +25,15 @@ export class OrdersService {
   async createOrder(dto: any) {
     const userId = Number(dto.id_buyer);
 
-    const cartItems = await this.cartService.getCart(userId);
-
+    const cartItems = await this.cartService.getCartItemsByProductIds(userId, dto.cartItemIds);
+    console.log(cartItems);
     if (!cartItems || cartItems.length === 0) {
-      throw new HttpException('Корзина пуста', HttpStatus.BAD_REQUEST);
+      throw new HttpException('Выбранные товары не найдены в корзине', HttpStatus.BAD_REQUEST);
+    }
+
+    const purchasedItems = cartItems.filter(item => item.is_purchased === true);
+    if (purchasedItems.length > 0) {
+      throw new HttpException('Некоторые товары уже были куплены', HttpStatus.BAD_REQUEST);
     }
 
     const stockCheck = await this.productsService.checkMultipleStock(
@@ -39,8 +44,13 @@ export class OrdersService {
     );
 
     if (!stockCheck.available) {
+      const errors = stockCheck.details
+          .filter(d => !d.available)
+          .map(d => `Товар ID ${d.productId}: доступно ${d.currentStock}, требуется ${d.required}`)
+          .join('; ');
+
       throw new HttpException(
-          `Недостаточно товара на складе`,
+          `Недостаточно товара на складе: ${errors}`,
           HttpStatus.BAD_REQUEST,
       );
     }
@@ -65,6 +75,7 @@ export class OrdersService {
     let discountAmount = 0;
     let finalTotal = subtotal;
 
+    // Берем скидку из корзины (из первого товара с скидкой)
     const cartDiscount = cartItems.find(i => i.id_discount);
 
     if (cartDiscount?.id_discount) {
@@ -150,6 +161,7 @@ export class OrdersService {
         );
       }
 
+      // Помечаем только выбранные товары как купленные
       await this.cartService.purchaseCartWithTransaction(
           userId,
           cartItems.map(i => i.id_cart),

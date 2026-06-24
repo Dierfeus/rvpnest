@@ -1,15 +1,20 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNumber, IsString, IsOptional } from 'class-validator';
+import { IsNumber, IsString, IsOptional, IsArray, ArrayMinSize } from 'class-validator';
 
 export class CreateOrderDto {
   @ApiProperty({ example: 1, description: 'ID покупателя' })
   @IsNumber()
   readonly id_buyer: number;
 
-  @ApiProperty({ example: 3, required: false, description: 'ID скидки' })
-  @IsOptional()
-  @IsNumber()
-  readonly id_discount?: number;
+  @ApiProperty({
+    example: [1, 2, 3],
+    description: 'Массив ID товаров из корзины для заказа',
+    type: [Number]
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsNumber({}, { each: true })
+  readonly cartItemIds: number[];
 
   @ApiProperty({ example: 'г. Москва, ул. Ленина, д. 1, кв. 10', description: 'Адрес доставки' })
   @IsString()

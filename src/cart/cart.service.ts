@@ -51,26 +51,6 @@ export class CartService {
         return result;
     }
 
-    async cleanInvalidCartItems(userId: number) {
-        let cleaned = 0;
-        const allItems = await this.cartItemRepository.findAll({
-            where: { id_user: userId, is_purchased: false }
-        });
-        for (const item of allItems) {
-            if (!item.id_product || item.id_product <= 0) {
-                await item.destroy();
-                cleaned++;
-            } else {
-                const product = await this.productRepository.findByPk(item.id_product);
-                if (!product) {
-                    await item.destroy();
-                    cleaned++;
-                }
-            }
-        }
-        return { cleaned };
-    }
-
     async getCartCount(userId: number) {
         const items = await this.cartItemRepository.findAll({
             where: { id_user: userId, is_purchased: false }
@@ -79,7 +59,27 @@ export class CartService {
         return { count };
     }
 
-    async getCartItemsByIds(userId: number, cartItemIds: number[]) {
+    async getCartItemsByProductIds(userId: number, productIds: number[]) {
+        if (!productIds || productIds.length === 0) {
+            return [];
+        }
+
+        return this.cartItemRepository.findAll({
+            where: {
+                id_user: userId,
+                id_product: productIds,  // ← ищем по ID товаров
+                is_purchased: false
+            },
+            include: ['product']
+        });
+    }
+
+// старый поиск
+    async getCartItemsByCartIds(userId: number, cartItemIds: number[]) {
+        if (!cartItemIds || cartItemIds.length === 0) {
+            return [];
+        }
+
         return this.cartItemRepository.findAll({
             where: {
                 id_user: userId,
@@ -112,8 +112,9 @@ export class CartService {
         if (!product) {
             throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
         }
-        const stock = await this.productsService.getProductStock(product.id_product);
+        const stock = await this.productsService.getProductStock(product.dataValues.id_product);
         const quantity = dto.quantity || 1;
+
         if (stock < quantity) {
             throw new HttpException(
                 `Недостаточно товара на складе. Доступно: ${stock}`,
