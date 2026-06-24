@@ -26,7 +26,6 @@ export class OrdersService {
     const userId = Number(dto.id_buyer);
 
     const cartItems = await this.cartService.getCartItemsByProductIds(userId, dto.cartItemIds);
-    console.log(cartItems);
     if (!cartItems || cartItems.length === 0) {
       throw new HttpException('Выбранные товары не найдены в корзине', HttpStatus.BAD_REQUEST);
     }
