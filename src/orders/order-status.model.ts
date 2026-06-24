@@ -4,17 +4,17 @@ import { OrderDelivery } from './order-delivery.model';
 @Table({ tableName: 'order_statuses', timestamps: false })
 export class OrderStatus extends Model<OrderStatus> {
   @Column({ type: DataType.INTEGER, primaryKey: true, autoIncrement: true })
-  id_status: number;
+  declare id_status: number;
 
   @Column({ type: DataType.STRING, allowNull: false })
-  name: string;
+  declare name: string;
 
   @Column({ type: DataType.STRING, allowNull: true })
-  description: string;
+  declare description: string;
 
   @Column({ type: DataType.INTEGER, defaultValue: 0 })
-  sort_order: number;
+  declare sort_order: number;
 
   @HasMany(() => OrderDelivery)
-  deliveries: OrderDelivery[];
+  declare deliveries: OrderDelivery[];
 }

@@ -4,7 +4,7 @@ import { Discount } from '../discounts/discount.model';
 import { OrderItem } from './order-item.model';
 import { OrderDelivery } from './order-delivery.model';
 
-interface OrderCreationAttrs {
+export interface OrderCreationAttrs {
   id_buyer: number;
   date: Date;
   id_discount?: number;
@@ -20,8 +20,6 @@ interface OrderCreationAttrs {
 export class Order extends Model<Order, OrderCreationAttrs> {
   @Column({ type: DataType.INTEGER, primaryKey: true, autoIncrement: true })
   id_order: number;
-
-  // id_seller удален - магазин сам является продавцом
 
   @ForeignKey(() => User)
   @Column({ type: DataType.INTEGER })

@@ -12,6 +12,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { Order } from './order.model';
+import { OrderStatus } from './order-status.model';
 import { Roles } from '../auth/roles-auth.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -88,6 +89,59 @@ export class OrdersController {
     return this.ordersService.getOrdersByUser(req.user.id);
   }
 
+  @Get('statuses')
+  @ApiOperation({
+    summary: 'Получить все статусы заказов',
+    description: 'Возвращает список всех возможных статусов заказов.'
+  })
+  @ApiOkResponse({
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id_status: { type: 'number', example: 1 },
+          name: { type: 'string', example: 'Ожидает подтверждения' },
+          description: { type: 'string', example: 'Заказ создан, ожидает подтверждения' },
+          sort_order: { type: 'number', example: 0 }
+        }
+      }
+    }
+  })
+  async getAllStatuses() {
+    return this.ordersService.getAllStatuses();
+  }
+
+  @Post('statuses')
+  @Roles('admin')
+  @UseGuards(RolesGuard)
+  @ApiOperation({
+    summary: 'Создать новый статус заказа (Админ)',
+    description: 'Создает новый статус заказа. Доступно только администраторам.'
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', example: 'Новый статус' },
+        description: { type: 'string', example: 'Описание статуса' },
+        sort_order: { type: 'number', example: 9 }
+      }
+    }
+  })
+  @ApiCreatedResponse({
+    type: OrderStatus,
+    description: 'Статус успешно создан'
+  })
+  @ApiBadRequestResponse({ description: 'Статус с таким именем уже существует' })
+  async createStatus(
+      @Body('name') name: string,
+      @Body('description') description: string,
+      @Body('sort_order') sort_order: number
+  ) {
+    return this.ordersService.createStatus(name, description, sort_order);
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: 'Получить заказ по ID',
@@ -105,45 +159,63 @@ export class OrdersController {
   })
   @ApiNotFoundResponse({ description: 'Заказ не найден' })
   async getOrderById(@Param('id') id: number) {
-    return this.ordersService.getOrderById(id);
+    return this.ordersService.getOrderWithStatus(id);
   }
 
-  @Get('statuses')
+  @Get(':id/status/history')
   @ApiOperation({
-    summary: 'Получить все статусы заказов',
-    description: 'Возвращает список всех возможных статусов заказов.'
+    summary: 'Получить историю статусов заказа',
+    description: 'Возвращает всю историю изменения статусов заказа.'
   })
-  @ApiOkResponse({
-    schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id_status: { type: 'number', example: 1 },
-          name: { type: 'string', example: 'Оформлен' },
-          description: { type: 'string', example: 'Заказ создан' }
-        }
-      }
-    }
-  })
-  async getAllStatuses() {
-    return this.ordersService.getAllStatuses();
+  @ApiParam({ name: 'id', type: 'number', description: 'ID заказа' })
+  async getOrderStatusHistory(@Param('id') id: number) {
+    return this.ordersService.getOrderStatusHistory(id);
   }
 
+  @Get(':id/status/current')
+  @ApiOperation({
+    summary: 'Получить текущий статус заказа',
+    description: 'Возвращает текущий статус заказа.'
+  })
+  @ApiParam({ name: 'id', type: 'number', description: 'ID заказа' })
+  async getCurrentOrderStatus(@Param('id') id: number) {
+    return this.ordersService.getCurrentOrderStatus(id);
+  }
+
+  @Put(':id')
+  @ApiOperation({
+    summary: 'Обновить заказ',
+    description: 'Обновляет информацию о заказе (адрес, способ оплаты, комментарий).'
+  })
+  @ApiParam({ name: 'id', type: 'number', description: 'ID заказа' })
+  @ApiBody({ type: UpdateOrderDto })
+  @ApiOkResponse({ type: Order })
+  @ApiNotFoundResponse({ description: 'Заказ не найден' })
+  async updateOrder(
+      @Param('id') id: number,
+      @Body() dto: UpdateOrderDto
+  ) {
+    return this.ordersService.updateOrder(id, dto);
+  }
+
+  // ОДИН ПУТЬ ДЛЯ ИЗМЕНЕНИЯ СТАТУСА
   @Put(':id/status')
   @ApiOperation({
-    summary: 'Обновить статус заказа',
-    description: 'Изменяет статус заказа и добавляет запись в историю статусов.'
+    summary: 'Изменить статус заказа',
+    description: 'Изменяет статус заказа по ID статуса. Добавляет запись в историю.'
   })
-  @ApiParam({
-    name: 'id',
-    type: 'number',
-    description: 'ID заказа',
-    example: 1
-  })
+  @ApiParam({ name: 'id', type: 'number', description: 'ID заказа' })
   @ApiBody({ type: UpdateOrderStatusDto })
   @ApiOkResponse({
-    description: 'Статус заказа обновлен'
+    description: 'Статус заказа обновлен',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Статус заказа обновлен' },
+        status: { type: 'object' },
+        orderId: { type: 'number' }
+      }
+    }
   })
   @ApiNotFoundResponse({ description: 'Заказ или статус не найден' })
   async updateOrderStatus(
@@ -161,15 +233,8 @@ export class OrdersController {
     summary: 'Удалить заказ (Админ)',
     description: 'Полное удаление заказа из системы. Доступно только администраторам.'
   })
-  @ApiParam({
-    name: 'id',
-    type: 'number',
-    description: 'ID заказа',
-    example: 1
-  })
-  @ApiOkResponse({
-    description: 'Заказ успешно удален'
-  })
+  @ApiParam({ name: 'id', type: 'number', description: 'ID заказа' })
+  @ApiOkResponse({ description: 'Заказ успешно удален' })
   @ApiNotFoundResponse({ description: 'Заказ не найден' })
   async deleteOrder(@Param('id') id: number) {
     return this.ordersService.deleteOrder(id);
