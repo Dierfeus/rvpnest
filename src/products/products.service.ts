@@ -10,7 +10,7 @@ import { AddProductCharacteristicDto } from './dto/add-product-characteristic.dt
 import { CreateEntranceDto } from './dto/create-entrance.dto';
 import { CategoriesService } from '../categories/categories.service';
 import { CharacteristicsService } from '../characteristics/characteristics.service';
-import { Op, Sequelize } from 'sequelize';
+import {Op, Sequelize, Transaction} from 'sequelize';
 
 @Injectable()
 export class ProductsService {
@@ -320,37 +320,45 @@ export class ProductsService {
     }));
   }
 
-  async decreaseStockWithLock(productId: number, quantity: number, orderId: number, transaction: any) {
+  async decreaseStockWithLock(
+      productId: number,
+      quantity: number,
+      orderId: number,  // Добавляем параметр orderId
+      transaction: Transaction,
+  ) {
+    // Находим товар с блокировкой
     const product = await this.productRepository.findOne({
       where: { id_product: productId },
       lock: transaction.LOCK.UPDATE,
-      transaction
+      transaction,
     });
 
     if (!product) {
       throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
     }
 
-    const currentStock = product.getDataValue('stock') || 0;
-
-    if (currentStock < quantity) {
+    if (product.stock < quantity) {
       throw new HttpException(
-          `Недостаточно товара "${product.getDataValue('name')}". Доступно: ${currentStock}, требуется: ${quantity}`,
+          `Недостаточно товара на складе. Доступно: ${product.stock}, требуется: ${quantity}`,
           HttpStatus.BAD_REQUEST
       );
     }
 
-    await this.writeOffRepository.create({
-      id_product: productId,
-      id_order: orderId,
-      date: new Date(),
-      quantity: quantity,
-      reason: `Продажа по заказу #${orderId}`,
-    } as any, { transaction });
+    // Уменьшаем остаток
+    product.stock = product.stock - quantity;
+    await product.save({ transaction });
 
-    await product.update({
-      stock: currentStock - quantity
-    }, { transaction });
+    // Создаем запись о списании
+    await this.writeOffRepository.create(
+        {
+          id_product: productId,
+          id_order: orderId,  // Теперь orderId не будет undefined
+          date: new Date(),
+          quantity: quantity,
+          reason: `Продажа по заказу #${orderId}`,
+        } as any,
+        { transaction },
+    );
 
     return product;
   }

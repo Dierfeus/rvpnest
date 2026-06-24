@@ -7,8 +7,6 @@ import { OrderStatus } from './order-status.model';
 import { CartService } from '../cart/cart.service';
 import { ProductsService } from '../products/products.service';
 import { DiscountsService } from '../discounts/discounts.service';
-import { CreateOrderDto } from './dto/create-order.dto';
-import { UpdateOrderDto } from './dto/update-order.dto';
 import { Sequelize } from 'sequelize-typescript';
 
 @Injectable()
@@ -24,155 +22,147 @@ export class OrdersService {
       private sequelize: Sequelize,
   ) {}
 
-  async createOrder(dto: CreateOrderDto) {
+  async createOrder(dto: any) {
     const userId = Number(dto.id_buyer);
 
-    // 1. ТОЛЬКО ЧТЕНИЕ - никаких изменений
-    const cartItems = await this.cartService.getCart(userId);
+    const cartItemsRaw = await this.cartService.getCart(userId);
+    const cartItems = cartItemsRaw.map(i => i.get({ plain: true }));
 
-    if (!cartItems || cartItems.length === 0) {
+    if (!cartItems.length) {
       throw new HttpException('Корзина пуста', HttpStatus.BAD_REQUEST);
     }
 
-    // 2. Проверки без изменений
     const stockCheck = await this.productsService.checkMultipleStock(
-        cartItems.map(item => ({
-          productId: item.id_product,
-          quantity: item.quantity
-        }))
+        cartItems.map(i => ({
+          productId: i.product.id_product,
+          quantity: i.quantity,
+        })),
     );
 
     if (!stockCheck.available) {
-      const errors = stockCheck.insufficient.map(i =>
-          `"${i.name}": доступно ${i.available}, требуется ${i.required}`
-      ).join('; ');
       throw new HttpException(
-          `Недостаточно товара на складе: ${errors}`,
-          HttpStatus.BAD_REQUEST
+          `Недостаточно товара на складе`,
+          HttpStatus.BAD_REQUEST,
       );
     }
 
-    // 3. Расчеты без изменений
     let subtotal = 0;
-    const orderItemsData: {
-      id_product: number;
-      quantity: number;
-      price_at_time: number;
-    }[] = [];
+    const orderItems: any[] = [];
 
-    for (const cartItem of cartItems) {
-      const product = await this.productsService.getOne(cartItem.id_product);
+    for (const item of cartItems) {
+      const product = await this.productsService.getOne(item.product.id_product);
       const price = Number(product.price);
-      subtotal += price * cartItem.quantity;
-      orderItemsData.push({
-        id_product: cartItem.id_product,
-        quantity: cartItem.quantity,
+
+      subtotal += price * item.quantity;
+
+      orderItems.push({
+        id_product: item.product.id_product,
+        quantity: item.quantity,
         price_at_time: price,
       });
     }
 
-    let discountAmount = 0;
     let discountId: number | null = null;
+    let discountAmount = 0;
     let finalTotal = subtotal;
 
     const cartDiscount = cartItems.find(i => i.id_discount);
+
     if (cartDiscount?.id_discount) {
       const discount = await this.discountsService.validateAndGetDiscount(
           cartDiscount.id_discount,
           subtotal,
-          userId
+          userId,
       );
+
       if (discount) {
         discountId = discount.id_discount;
         discountAmount = cartItems.reduce(
-            (sum, i) => sum + Number(i.discount_amount || 0),
-            0
+            (s, i) => s + Number(i.discount_amount || 0),
+            0,
         );
         finalTotal = subtotal - discountAmount;
       }
-    } else if (dto.id_discount) {
-      try {
-        const discount = await this.discountsService.validateAndGetDiscount(
-            dto.id_discount,
-            subtotal,
-            userId
-        );
-        if (discount) {
-          discountId = discount.id_discount;
-          discountAmount = this.calculateDiscountAmount(subtotal, discount);
-          finalTotal = subtotal - discountAmount;
-        }
-      } catch (e) {
-        console.warn('Скидка не применена:', e.message);
-      }
     }
 
-    // 4. ТОЛЬКО ТЕПЕРЬ - транзакция
     const transaction = await this.sequelize.transaction();
 
     try {
-      // Создаем заказ
-      const order = await this.orderRepository.create({
-        id_buyer: userId,
-        date: new Date(),
-        id_discount: discountId,
-        subtotal_amount: subtotal,
-        discount_amount: discountAmount,
-        total_amount: finalTotal,
-        shipping_address: dto.shipping_address,
-        payment_method: dto.payment_method,
-        comment: dto.comment || null,
-      } as any, { transaction });
+      // 1. СОЗДАЕМ ЗАКАЗ
+      const order = await this.orderRepository.create(
+          {
+            id_buyer: userId,
+            date: new Date(),
+            id_discount: discountId,
+            subtotal_amount: subtotal,
+            discount_amount: discountAmount,
+            total_amount: finalTotal,
+            shipping_address: dto.shipping_address,
+            payment_method: dto.payment_method,
+            comment: dto.comment || null,
+          } as any,
+          { transaction },
+      );
 
-      // Добавляем товары в заказ
-      for (const item of orderItemsData) {
-        await this.orderItemRepository.create({
-          id_order: order.id_order,
-          id_product: item.id_product,
-          quantity: item.quantity,
-          price_at_time: item.price_at_time,
-        } as any, { transaction });
+      // ВАЖНО: Получаем ID заказа через dataValues или toJSON()
+      const orderId = order.get('id_order') || order.dataValues?.id_order || order.id_order;
+
+      // Для отладки
+      console.log('Создан заказ с ID:', orderId);
+      console.log('Order object:', order.toJSON ? order.toJSON() : order);
+
+      if (!orderId) {
+        throw new HttpException('Не удалось получить ID созданного заказа', HttpStatus.INTERNAL_SERVER_ERROR);
       }
 
-      // Уменьшаем склад
-      for (const cartItem of cartItems) {
-        await this.productsService.decreaseStockWithLock(
-            cartItem.id_product,
-            cartItem.quantity,
-            order.id_order,
-            transaction
+      // 2. СОЗДАЕМ ЭЛЕМЕНТЫ ЗАКАЗА
+      for (const item of orderItems) {
+        await this.orderItemRepository.create(
+            {
+              id_order: orderId,  // Используем сохраненный ID
+              ...item,
+            } as any,
+            { transaction },
         );
       }
 
-      // Помечаем корзину как купленную
+      // 3. УМЕНЬШАЕМ ОСТАТКИ ТОВАРОВ
+      for (const item of cartItems) {
+        await this.productsService.decreaseStockWithLock(
+            item.product.id_product,
+            item.quantity,
+            orderId,  // Передаем ID заказа
+            transaction,
+        );
+      }
+
+      // 4. ОЧИЩАЕМ КОРЗИНУ
       await this.cartService.purchaseCartWithTransaction(
           userId,
           cartItems.map(i => i.id_cart),
-          transaction
+          transaction,
       );
 
-      // Начальный статус
-      const initialStatus = await this.orderStatusRepository.findOne({
-        where: { sort_order: 0 }
+      // 5. СОЗДАЕМ ЗАПИСЬ О СТАТУСЕ
+      const status = await this.orderStatusRepository.findOne({
+        where: { sort_order: 0 },
       });
 
-      if (initialStatus) {
-        await this.orderDeliveryRepository.create({
-          id_order: order.id_order,
-          id_status: initialStatus.id_status,
-          date: new Date(),
-          comment: 'Заказ создан',
-        } as any, { transaction });
-      }
-
-      if (discountId) {
-        await this.discountsService.incrementUsageCount(discountId, transaction);
+      if (status) {
+        await this.orderDeliveryRepository.create(
+            {
+              id_order: orderId,  // Используем сохраненный ID
+              id_status: status.id_status,
+              date: new Date(),
+              comment: 'Заказ создан',
+            } as any,
+            { transaction },
+        );
       }
 
       await transaction.commit();
 
-      return this.getOrderById(order.id_order);
-
+      return this.getOrderById(orderId);
     } catch (e) {
       await transaction.rollback();
       throw e;
@@ -185,24 +175,17 @@ export class OrdersService {
       include: ['buyer', 'discount', 'items', {
         association: 'deliveries',
         include: ['status'],
-        order: [['date', 'DESC']]
       }],
-      order: [['date', 'DESC']]
+      order: [['date', 'DESC']],
     });
   }
 
   async getOrderById(id: number) {
     const order = await this.orderRepository.findByPk(id, {
-      include: [
-        'buyer',
-        'discount',
-        'items',
-        {
-          association: 'deliveries',
-          include: ['status'],
-          order: [['date', 'DESC']]
-        }
-      ]
+      include: ['buyer', 'discount', 'items', {
+        association: 'deliveries',
+        include: ['status'],
+      }],
     });
 
     if (!order) {
@@ -212,23 +195,9 @@ export class OrdersService {
     return order;
   }
 
-  private calculateDiscountAmount(total: number, discount: any): number {
-    let discountAmount = 0;
-
-    if (discount.type === 'percentage') {
-      discountAmount = total * (discount.size / 100);
-      if (discount.max_discount_amount) {
-        discountAmount = Math.min(discountAmount, discount.max_discount_amount);
-      }
-    } else if (discount.type === 'fixed') {
-      discountAmount = discount.size;
-    }
-
-    return Math.min(discountAmount, total);
-  }
-
-  async getAllOrders(statusId?: number, limit: number = 10, offset: number = 0) {
+  async getAllOrders(statusId?: number, limit = 10, offset = 0) {
     const where: any = {};
+
     if (statusId) {
       where['$deliveries.id_status$'] = statusId;
     }
@@ -238,15 +207,20 @@ export class OrdersService {
       include: ['buyer', 'discount', 'items', {
         association: 'deliveries',
         include: ['status'],
-        order: [['date', 'DESC']]
       }],
       limit: Math.min(limit, 100),
       offset,
-      order: [['date', 'DESC']]
+      order: [['date', 'DESC']],
     });
   }
 
-  async updateOrder(id: number, dto: UpdateOrderDto) {
+  async getAllStatuses() {
+    return this.orderStatusRepository.findAll({
+      order: [['sort_order', 'ASC']],
+    });
+  }
+
+  async updateOrder(id: number, dto: any) {
     const order = await this.getOrderById(id);
     await order.update(dto);
     return this.getOrderById(id);
@@ -256,6 +230,7 @@ export class OrdersService {
     const order = await this.getOrderById(id);
 
     const status = await this.orderStatusRepository.findByPk(statusId);
+
     if (!status) {
       throw new HttpException('Статус не найден', HttpStatus.NOT_FOUND);
     }
@@ -264,24 +239,15 @@ export class OrdersService {
       id_order: order.id_order,
       id_status: statusId,
       date: new Date(),
-      comment: comment || `Статус изменен на: ${status.name}`,
+      comment: comment || `Статус: ${status.name}`,
     } as any);
 
-    return {
-      message: 'Статус заказа обновлен',
-      newStatus: status
-    };
-  }
-
-  async getAllStatuses() {
-    return this.orderStatusRepository.findAll({
-      order: [['sort_order', 'ASC']]
-    });
+    return { message: 'OK', status };
   }
 
   async deleteOrder(id: number) {
     const order = await this.getOrderById(id);
     await order.destroy();
-    return { message: 'Заказ удален' };
+    return { message: 'Заказ удалён' };
   }
 }
