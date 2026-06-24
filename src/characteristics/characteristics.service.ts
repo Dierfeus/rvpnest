@@ -90,7 +90,7 @@ export class CharacteristicsService {
         group: { [Op.ne]: null as any }
       }
     });
-    return groups.map(g => g.group).filter(g => g);
+    return groups.map(g => g.get('group')).filter(Boolean);
   }
 
   async createCharacteristicValue(dto: CreateCharacteristicValueDto) {
