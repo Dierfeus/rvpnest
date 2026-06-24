@@ -323,30 +323,21 @@ export class CartService {
             throw new HttpException('Промокод не найден', HttpStatus.NOT_FOUND);
         }
 
-        const isActive = discount.getDataValue('is_active');
-        const startTime = discount.getDataValue('start_time');
-        const endTime = discount.getDataValue('end_time');
-        const minOrderAmount = discount.getDataValue('min_order_amount');
-        const usageLimit = discount.getDataValue('usage_limit');
-        const usedCount = discount.getDataValue('used_count');
-        const type = discount.getDataValue('type');
-        const size = discount.getDataValue('size');
-        const maxDiscountAmount = discount.getDataValue('max_discount_amount');
-        const discountId = discount.getDataValue('id_discount');
+        const discountData = discount.dataValues || discount;
 
-        if (!isActive) {
+        if (!discountData.is_active) {
             throw new HttpException('Промокод неактивен', HttpStatus.BAD_REQUEST);
         }
 
         const now = new Date();
-        const start = new Date(startTime);
-        const end = new Date(endTime);
+        const start = new Date(discountData.start_time);
+        const end = new Date(discountData.end_time);
 
         if (now < start || now > end) {
             throw new HttpException('Срок действия промокода истек', HttpStatus.BAD_REQUEST);
         }
 
-        const cartItems = await this.cartItemRepository.findAll({
+        let cartItems = await this.cartItemRepository.findAll({
             where: { id_user: userId, is_purchased: false },
             include: ['product']
         });
@@ -358,43 +349,54 @@ export class CartService {
         let subtotal = 0;
         for (const item of cartItems) {
             const price = item.price_snapshot || item.product?.price || 0;
-            subtotal += price * item.quantity;
+            subtotal += Number(price) * item.quantity;
         }
 
-        if (minOrderAmount && subtotal < Number(minOrderAmount)) {
+        if (subtotal <= 0) {
+            throw new HttpException('Сумма корзины должна быть больше 0', HttpStatus.BAD_REQUEST);
+        }
+
+        if (discountData.min_order_amount && subtotal < Number(discountData.min_order_amount)) {
             throw new HttpException(
-                `Минимальная сумма заказа для промокода: ${minOrderAmount}`,
+                `Минимальная сумма заказа для промокода: ${discountData.min_order_amount}`,
                 HttpStatus.BAD_REQUEST
             );
         }
 
-        if (usageLimit && usedCount >= usageLimit) {
+        if (discountData.usage_limit && discountData.used_count >= discountData.usage_limit) {
             throw new HttpException('Лимит использований промокода исчерпан', HttpStatus.BAD_REQUEST);
         }
 
         let discountAmount = 0;
-        if (type === 'percentage') {
-            discountAmount = subtotal * (size / 100);
-            if (maxDiscountAmount) {
-                discountAmount = Math.min(discountAmount, Number(maxDiscountAmount));
+        if (discountData.type === 'percentage') {
+            discountAmount = subtotal * (discountData.size / 100);
+            if (discountData.max_discount_amount) {
+                discountAmount = Math.min(discountAmount, Number(discountData.max_discount_amount));
             }
-        } else if (type === 'fixed') {
-            discountAmount = Math.min(size, subtotal);
+        } else if (discountData.type === 'fixed') {
+            discountAmount = Math.min(discountData.size, subtotal);
         }
 
         for (const item of cartItems) {
+            console.log(item.toJSON());
+            console.log(item.dataValues);
             const price = item.price_snapshot || item.product?.price || 0;
-            const itemTotal = price * item.quantity;
+            const itemTotal = Number(price) * item.quantity;
             const itemDiscount = (itemTotal / subtotal) * discountAmount;
 
-            item.id_discount = discountId;
+            console.log('BEFORE', {
+                cart: item.id_cart,
+                currentDiscount: item.id_discount,
+                discountId: discountData.id_discount,
+                itemDiscount,
+            });
+
+            item.id_discount = discountData.id_discount;
             item.discount_amount = Math.round(itemDiscount * 100) / 100;
-            await item.save();
+            await item.save(); // СОХРАНЯЕМ ИЗМЕНЕНИЯ
         }
 
-        await discount.update({
-            used_count: (usedCount || 0) + 1
-        });
+        await this.discountsService.incrementUsageCount(discountData.id_discount, null);
 
         return this.getCart(userId);
     }
