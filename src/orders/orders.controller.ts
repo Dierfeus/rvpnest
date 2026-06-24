@@ -130,30 +130,6 @@ export class OrdersController {
     return this.ordersService.getAllStatuses();
   }
 
-  @Put(':id')
-  @ApiOperation({
-    summary: 'Обновить заказ',
-    description: 'Обновляет информацию о заказе (адрес, способ оплаты, комментарий).'
-  })
-  @ApiParam({
-    name: 'id',
-    type: 'number',
-    description: 'ID заказа',
-    example: 1
-  })
-  @ApiBody({ type: UpdateOrderDto })
-  @ApiOkResponse({
-    type: Order,
-    description: 'Заказ успешно обновлен'
-  })
-  @ApiNotFoundResponse({ description: 'Заказ не найден' })
-  async updateOrder(
-      @Param('id') id: number,
-      @Body() dto: UpdateOrderDto
-  ) {
-    return this.ordersService.updateOrder(id, dto);
-  }
-
   @Put(':id/status')
   @ApiOperation({
     summary: 'Обновить статус заказа',
