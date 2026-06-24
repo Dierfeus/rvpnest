@@ -139,8 +139,7 @@ export class ProductsController {
     }
   })
   async getProductPrice(@Param('id') id: number) {
-    const price = await this.productsService.getProductPrice(id);
-    return { price };
+    return this.productsService.getProductPrice(id);
   }
 
   @Get('entrance/:productId')
@@ -160,8 +159,6 @@ export class ProductsController {
   async getEntrances(@Param('productId') productId: number) {
     return this.productsService.getEntrancesByProduct(productId);
   }
-
-  // ==================== ЗАЩИЩЕННЫЕ МАРШРУТЫ (АВТОРИЗАЦИЯ) ====================
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
