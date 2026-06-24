@@ -47,6 +47,7 @@ export class DiscountsService {
     if (!discountType) {
       throw new HttpException('Тип скидки не найден', HttpStatus.NOT_FOUND);
     }
+
     if (dto.code) {
       const existing = await this.discountRepository.findOne({
         where: { code: dto.code }
@@ -59,18 +60,17 @@ export class DiscountsService {
     const discount = await this.discountRepository.create({
       id_discountsType: dto.id_discountsType,
       name: dto.name,
-      code: dto.code,
+      code: dto.code || null,
       type: dto.type || 'percentage',
       size: dto.size,
       start_time: new Date(dto.start_time),
       end_time: new Date(dto.end_time),
-      min_order_amount: dto.min_order_amount,
-      max_discount_amount: dto.max_discount_amount,
-      usage_limit: dto.usage_limit,
+      min_order_amount: dto.min_order_amount || null,
+      max_discount_amount: dto.max_discount_amount || null,
+      usage_limit: dto.usage_limit || null,
       is_active: dto.is_active !== undefined ? dto.is_active : true,
     } as any);
-
-    // Если есть товары - привязываем
+    const discountId = discount.getDataValue('id_discount');
     if (dto.productIds && dto.productIds.length > 0) {
       for (const productId of dto.productIds) {
         const product = await this.productRepository.findByPk(productId);
@@ -79,13 +79,12 @@ export class DiscountsService {
         }
         await this.productDiscountRepository.create({
           id_product: productId,
-          id_discount: discount.id_discount,
+          id_discount: discountId,
           is_active: true,
         } as any);
       }
     }
-
-    return this.getDiscountById(discount.id_discount);
+    return this.getDiscountById(discountId);
   }
 
   async getAllDiscounts() {

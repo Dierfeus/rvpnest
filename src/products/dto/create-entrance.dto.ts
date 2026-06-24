@@ -1,6 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNumber, IsDateString } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsNumber, IsDateString, IsOptional, Min } from 'class-validator';
 
 export class CreateEntranceDto {
   @ApiProperty({ example: 1 })
@@ -9,9 +8,15 @@ export class CreateEntranceDto {
 
   @ApiProperty({ example: '2025-01-15T10:00:00Z' })
   @IsDateString()
-  readonly date: string;  // оставляем string для валидации
+  readonly date: string;
 
   @ApiProperty({ example: 450.00 })
   @IsNumber()
   readonly purchase_price: number;
+
+  @ApiProperty({ example: 10, description: 'Количество поступления', required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  readonly quantity?: number;
 }

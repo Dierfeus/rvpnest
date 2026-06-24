@@ -269,4 +269,41 @@ export class ProductsController {
   async createEntrance(@Body() dto: CreateEntranceDto) {
     return this.productsService.createEntrance(dto);
   }
+
+  @Get(':id/movements')
+  @ApiOperation({
+    summary: 'Получить историю движений товара',
+    description: 'Возвращает полную историю приходов и списаний товара.'
+  })
+  @ApiParam({ name: 'id', type: 'number', description: 'ID товара' })
+  @ApiOkResponse({ description: 'История движений товара' })
+  async getProductMovements(@Param('id') id: number) {
+    return this.productsService.getProductMovements(id);
+  }
+
+  @Get(':id/stock')
+  @ApiOperation({
+    summary: 'Получить текущий остаток товара',
+    description: 'Возвращает текущее количество товара на складе.'
+  })
+  @ApiParam({ name: 'id', type: 'number', description: 'ID товара' })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        productId: { type: 'number', example: 1 },
+        name: { type: 'string', example: 'Ноутбук Lenovo' },
+        stock: { type: 'number', example: 10 }
+      }
+    }
+  })
+  async getStock(@Param('id') id: number) {
+    const product = await this.productsService.getOne(id);
+    return {
+      productId: product.id_product,
+      name: product.name,
+      stock: product.stock
+    };
+  }
+  
 }
