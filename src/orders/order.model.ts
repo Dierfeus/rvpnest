@@ -5,7 +5,6 @@ import { OrderItem } from './order-item.model';
 import { OrderDelivery } from './order-delivery.model';
 
 interface OrderCreationAttrs {
-  id_seller: number;
   id_buyer: number;
   date: Date;
   id_discount?: number;
@@ -14,6 +13,7 @@ interface OrderCreationAttrs {
   total_amount: number;
   shipping_address: string;
   payment_method: string;
+  comment?: string;
 }
 
 @Table({ tableName: 'orders', timestamps: true })
@@ -21,9 +21,7 @@ export class Order extends Model<Order, OrderCreationAttrs> {
   @Column({ type: DataType.INTEGER, primaryKey: true, autoIncrement: true })
   id_order: number;
 
-  @ForeignKey(() => User)
-  @Column({ type: DataType.INTEGER })
-  id_seller: number;
+  // id_seller удален - магазин сам является продавцом
 
   @ForeignKey(() => User)
   @Column({ type: DataType.INTEGER })
@@ -53,9 +51,6 @@ export class Order extends Model<Order, OrderCreationAttrs> {
 
   @Column({ type: DataType.TEXT, allowNull: true })
   comment: string;
-
-  @BelongsTo(() => User, { as: 'seller', foreignKey: 'id_seller' })
-  seller: User;
 
   @BelongsTo(() => User, { as: 'buyer', foreignKey: 'id_buyer' })
   buyer: User;

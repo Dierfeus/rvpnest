@@ -25,93 +25,95 @@ export class OrdersService {
   ) {}
 
   async createOrder(dto: CreateOrderDto) {
-    const transaction = await this.sequelize.transaction();
+    const userId = Number(dto.id_buyer);
 
-    try {
-      const cartItems = await this.cartService.getCartItemsByIds(
-          dto.id_buyer,
-          dto.cartItemIds
+    // 1. ТОЛЬКО ЧТЕНИЕ - никаких изменений
+    const cartItems = await this.cartService.getCart(userId);
+
+    if (!cartItems || cartItems.length === 0) {
+      throw new HttpException('Корзина пуста', HttpStatus.BAD_REQUEST);
+    }
+
+    // 2. Проверки без изменений
+    const stockCheck = await this.productsService.checkMultipleStock(
+        cartItems.map(item => ({
+          productId: item.id_product,
+          quantity: item.quantity
+        }))
+    );
+
+    if (!stockCheck.available) {
+      const errors = stockCheck.insufficient.map(i =>
+          `"${i.name}": доступно ${i.available}, требуется ${i.required}`
+      ).join('; ');
+      throw new HttpException(
+          `Недостаточно товара на складе: ${errors}`,
+          HttpStatus.BAD_REQUEST
       );
+    }
 
-      if (cartItems.length === 0) {
-        throw new HttpException('Выбранные товары не найдены в корзине', HttpStatus.BAD_REQUEST);
-      }
+    // 3. Расчеты без изменений
+    let subtotal = 0;
+    const orderItemsData: {
+      id_product: number;
+      quantity: number;
+      price_at_time: number;
+    }[] = [];
 
-      const stockCheck = await this.productsService.checkMultipleStock(
-          cartItems.map(item => ({
-            productId: item.id_product,
-            quantity: item.quantity
-          }))
+    for (const cartItem of cartItems) {
+      const product = await this.productsService.getOne(cartItem.id_product);
+      const price = Number(product.price);
+      subtotal += price * cartItem.quantity;
+      orderItemsData.push({
+        id_product: cartItem.id_product,
+        quantity: cartItem.quantity,
+        price_at_time: price,
+      });
+    }
+
+    let discountAmount = 0;
+    let discountId: number | null = null;
+    let finalTotal = subtotal;
+
+    const cartDiscount = cartItems.find(i => i.id_discount);
+    if (cartDiscount?.id_discount) {
+      const discount = await this.discountsService.validateAndGetDiscount(
+          cartDiscount.id_discount,
+          subtotal,
+          userId
       );
-
-      if (!stockCheck.available) {
-        const errors = stockCheck.insufficient.map(i =>
-            `"${i.name}": доступно ${i.available}, требуется ${i.required}`
-        ).join('; ');
-        throw new HttpException(
-            `Недостаточно товара на складе: ${errors}`,
-            HttpStatus.BAD_REQUEST
+      if (discount) {
+        discountId = discount.id_discount;
+        discountAmount = cartItems.reduce(
+            (sum, i) => sum + Number(i.discount_amount || 0),
+            0
         );
+        finalTotal = subtotal - discountAmount;
       }
-
-      let subtotal = 0;
-      const orderItemsData: {
-        id_product: number;
-        quantity: number;
-        price_at_time: number;
-      }[] = [];
-
-      for (const cartItem of cartItems) {
-        const product = await this.productsService.getOne(cartItem.id_product);
-        const price = Number(product.price);
-        subtotal += price * cartItem.quantity;
-
-        orderItemsData.push({
-          id_product: cartItem.id_product,
-          quantity: cartItem.quantity,
-          price_at_time: price,
-        });
-      }
-
-      let discountAmount = 0;
-      let discountId: number | null = null;
-      let finalTotal = subtotal;
-
-      // Сначала пробуем взять скидку из корзины
-      const cartDiscount = cartItems.find(item => item.id_discount);
-      if (cartDiscount && cartDiscount.id_discount) {
+    } else if (dto.id_discount) {
+      try {
         const discount = await this.discountsService.validateAndGetDiscount(
-            cartDiscount.id_discount,
+            dto.id_discount,
             subtotal,
-            dto.id_buyer
+            userId
         );
         if (discount) {
           discountId = discount.id_discount;
-          discountAmount = cartItems.reduce((sum, item) => sum + (item.discount_amount || 0), 0);
+          discountAmount = this.calculateDiscountAmount(subtotal, discount);
           finalTotal = subtotal - discountAmount;
         }
+      } catch (e) {
+        console.warn('Скидка не применена:', e.message);
       }
+    }
 
-      else if (dto.id_discount) {
-        try {
-          const discount = await this.discountsService.validateAndGetDiscount(
-              dto.id_discount,
-              subtotal,
-              dto.id_buyer
-          );
-          if (discount) {
-            discountId = discount.id_discount;
-            discountAmount = this.calculateDiscountAmount(subtotal, discount);
-            finalTotal = subtotal - discountAmount;
-          }
-        } catch (error) {
-          console.warn('Скидка не применена:', error.message);
-        }
-      }
+    // 4. ТОЛЬКО ТЕПЕРЬ - транзакция
+    const transaction = await this.sequelize.transaction();
 
+    try {
+      // Создаем заказ
       const order = await this.orderRepository.create({
-        id_seller: dto.id_seller,
-        id_buyer: dto.id_buyer,
+        id_buyer: userId,
         date: new Date(),
         id_discount: discountId,
         subtotal_amount: subtotal,
@@ -122,6 +124,7 @@ export class OrdersService {
         comment: dto.comment || null,
       } as any, { transaction });
 
+      // Добавляем товары в заказ
       for (const item of orderItemsData) {
         await this.orderItemRepository.create({
           id_order: order.id_order,
@@ -131,6 +134,7 @@ export class OrdersService {
         } as any, { transaction });
       }
 
+      // Уменьшаем склад
       for (const cartItem of cartItems) {
         await this.productsService.decreaseStockWithLock(
             cartItem.id_product,
@@ -140,12 +144,14 @@ export class OrdersService {
         );
       }
 
+      // Помечаем корзину как купленную
       await this.cartService.purchaseCartWithTransaction(
-          dto.id_buyer,
-          dto.cartItemIds,
+          userId,
+          cartItems.map(i => i.id_cart),
           transaction
       );
 
+      // Начальный статус
       const initialStatus = await this.orderStatusRepository.findOne({
         where: { sort_order: 0 }
       });
@@ -167,10 +173,43 @@ export class OrdersService {
 
       return this.getOrderById(order.id_order);
 
-    } catch (error) {
+    } catch (e) {
       await transaction.rollback();
-      throw error;
+      throw e;
     }
+  }
+
+  async getOrdersByUser(userId: number) {
+    return this.orderRepository.findAll({
+      where: { id_buyer: userId },
+      include: ['buyer', 'discount', 'items', {
+        association: 'deliveries',
+        include: ['status'],
+        order: [['date', 'DESC']]
+      }],
+      order: [['date', 'DESC']]
+    });
+  }
+
+  async getOrderById(id: number) {
+    const order = await this.orderRepository.findByPk(id, {
+      include: [
+        'buyer',
+        'discount',
+        'items',
+        {
+          association: 'deliveries',
+          include: ['status'],
+          order: [['date', 'DESC']]
+        }
+      ]
+    });
+
+    if (!order) {
+      throw new HttpException('Заказ не найден', HttpStatus.NOT_FOUND);
+    }
+
+    return order;
   }
 
   private calculateDiscountAmount(total: number, discount: any): number {
@@ -196,41 +235,13 @@ export class OrdersService {
 
     return this.orderRepository.findAll({
       where,
-      include: ['seller', 'buyer', 'discount', 'items', {
+      include: ['buyer', 'discount', 'items', {
         association: 'deliveries',
         include: ['status'],
         order: [['date', 'DESC']]
       }],
       limit: Math.min(limit, 100),
       offset,
-      order: [['date', 'DESC']]
-    });
-  }
-
-  async getOrderById(id: number) {
-    const order = await this.orderRepository.findByPk(id, {
-      include: ['seller', 'buyer', 'discount', 'items', {
-        association: 'deliveries',
-        include: ['status'],
-        order: [['date', 'DESC']]
-      }]
-    });
-
-    if (!order) {
-      throw new HttpException('Заказ не найден', HttpStatus.NOT_FOUND);
-    }
-
-    return order;
-  }
-
-  async getOrdersByUser(userId: number, role: 'buyer' | 'seller') {
-    return this.orderRepository.findAll({
-      where: { [role === 'buyer' ? 'id_buyer' : 'id_seller']: userId },
-      include: ['seller', 'buyer', 'discount', 'items', {
-        association: 'deliveries',
-        include: ['status'],
-        order: [['date', 'DESC']]
-      }],
       order: [['date', 'DESC']]
     });
   }

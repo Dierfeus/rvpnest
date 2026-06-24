@@ -84,13 +84,8 @@ export class OrdersController {
     type: [Order],
     description: 'Список заказов пользователя'
   })
-  @ApiQuery({
-    name: 'role',
-    enum: ['buyer', 'seller'],
-    description: 'Роль пользователя в заказе (покупатель или продавец)'
-  })
-  async getMyOrders(@Req() req: any, @Query('role') role: 'buyer' | 'seller' = 'buyer') {
-    return this.ordersService.getOrdersByUser(req.user.id, role);
+  async getMyOrders(@Req() req: any) {
+    return this.ordersService.getOrdersByUser(req.user.id);
   }
 
   @Get(':id')
