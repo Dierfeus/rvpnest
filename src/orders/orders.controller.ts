@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param,
-  UseGuards, HttpCode, HttpStatus, Query, Req
+  UseGuards, HttpCode, HttpStatus, Query, Req, HttpException
 } from '@nestjs/common';
 import {
   ApiTags, ApiOperation, ApiResponse, ApiBearerAuth,
@@ -173,13 +173,17 @@ export class OrdersController {
   }
 
   @Get(':id/status/current')
-  @ApiOperation({
-    summary: 'Получить текущий статус заказа',
-    description: 'Возвращает текущий статус заказа.'
-  })
-  @ApiParam({ name: 'id', type: 'number', description: 'ID заказа' })
   async getCurrentOrderStatus(@Param('id') id: number) {
-    return this.ordersService.getCurrentOrderStatus(id);
+    const status = await this.ordersService.getCurrentOrderStatus(id);
+    if (!status) {
+      throw new HttpException('Статус заказа не найден', HttpStatus.NOT_FOUND);
+    }
+    return {
+      id_status: status.id_status,
+      name: status.name,
+      description: status.description,
+      sort_order: status.sort_order
+    };
   }
 
   @Put(':id')

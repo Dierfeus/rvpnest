@@ -241,7 +241,10 @@ export class OrdersService {
       order: [['date', 'DESC']],
       include: ['status'],
     });
-    return delivery;
+    if (!delivery) {
+      return null;
+    }
+    return delivery.status;
   }
 
   async getOrderStatusHistory(orderId: number) {
@@ -324,7 +327,7 @@ export class OrdersService {
     const currentStatus = await this.getCurrentOrderStatus(id);
     return {
       ...orderJson,
-      currentStatus: currentStatus?.status || null,
+      currentStatus: currentStatus || null,  // Убираем .status
     };
   }
 
@@ -370,7 +373,7 @@ export class OrdersService {
       const currentStatus = await this.getCurrentOrderStatus(order.id_order);
       result.push({
         ...orderJson,
-        currentStatus: currentStatus?.status || null,
+        currentStatus: currentStatus || null,  // Убираем .status
       });
     }
 
@@ -407,5 +410,4 @@ export class OrdersService {
 
     return status;
   }
-
 }

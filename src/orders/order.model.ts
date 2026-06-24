@@ -19,46 +19,46 @@ export interface OrderCreationAttrs {
 @Table({ tableName: 'orders', timestamps: true })
 export class Order extends Model<Order, OrderCreationAttrs> {
   @Column({ type: DataType.INTEGER, primaryKey: true, autoIncrement: true })
-  id_order: number;
+  declare id_order: number;
 
   @ForeignKey(() => User)
   @Column({ type: DataType.INTEGER })
-  id_buyer: number;
+  declare id_buyer: number;
 
   @Column({ type: DataType.DATEONLY })
-  date: Date;
+  declare date: Date;
 
   @ForeignKey(() => Discount)
   @Column({ type: DataType.INTEGER, allowNull: true })
-  id_discount: number;
+  declare id_discount: number;
 
   @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
-  subtotal_amount: number;
+  declare subtotal_amount: number;
 
   @Column({ type: DataType.DECIMAL(10, 2), defaultValue: 0 })
-  discount_amount: number;
+  declare discount_amount: number;
 
   @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
-  total_amount: number;
+  declare total_amount: number;
 
   @Column({ type: DataType.TEXT, allowNull: false })
-  shipping_address: string;
+  declare shipping_address: string;
 
   @Column({ type: DataType.STRING, allowNull: false })
-  payment_method: string;
+  declare payment_method: string;
 
   @Column({ type: DataType.TEXT, allowNull: true })
-  comment: string;
+  declare comment: string;
 
   @BelongsTo(() => User, { as: 'buyer', foreignKey: 'id_buyer' })
-  buyer: User;
+  declare buyer: User;
 
   @BelongsTo(() => Discount)
-  discount: Discount;
+  declare discount: Discount;
 
   @HasMany(() => OrderItem)
-  items: OrderItem[];
+  declare items: OrderItem[];
 
   @HasMany(() => OrderDelivery)
-  deliveries: OrderDelivery[];
+  declare deliveries: OrderDelivery[];
 }
