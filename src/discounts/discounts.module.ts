@@ -16,6 +16,6 @@ import { ProductsModule } from '../products/products.module';
   ],
   providers: [DiscountsService],
   controllers: [DiscountsController],
-  exports: [DiscountsService],
+  exports: [DiscountsService, SequelizeModule],
 })
 export class DiscountsModule {}

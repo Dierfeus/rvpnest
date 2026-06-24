@@ -6,12 +6,14 @@ import { CartService } from './cart.service';
 import { CartController } from './cart.controller';
 import { ProductsModule } from '../products/products.module';
 import { AuthModule } from '../auth/auth.module';
+import { DiscountsModule } from '../discounts/discounts.module';
 
 @Module({
     imports: [
         SequelizeModule.forFeature([CartItem, Product]),
         ProductsModule,
         AuthModule,
+        DiscountsModule,
     ],
     providers: [CartService],
     controllers: [CartController],

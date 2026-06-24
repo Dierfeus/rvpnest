@@ -1,6 +1,6 @@
 import {
     Controller, Get, Post, Put, Delete, Body, Param,
-    UseGuards, HttpCode, HttpStatus, Req
+    UseGuards, HttpCode, HttpStatus, Req, HttpException
 } from '@nestjs/common';
 import {
     ApiTags, ApiOperation, ApiResponse, ApiBearerAuth,
@@ -122,6 +122,71 @@ export class CartController {
     })
     async removeFromCart(@Req() req: any, @Param('cartId') cartId: number) {
         return this.cartService.removeFromCart(req.user.id, cartId);
+    }
+
+    @Post('apply-discount')
+    @ApiOperation({
+        summary: 'Применить промокод к корзине',
+        description: 'Применяет промокод к текущей корзине пользователя.'
+    })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                code: { type: 'string', example: 'NEWYEAR2025' }
+            }
+        }
+    })
+    @ApiOkResponse({
+        description: 'Промокод применен',
+        schema: {
+            type: 'object',
+            properties: {
+                message: { type: 'string', example: 'Промокод NEWYEAR2025 успешно применен' },
+                discount: {
+                    type: 'object',
+                    properties: {
+                        id_discount: { type: 'number', example: 1 },
+                        name: { type: 'string', example: 'Новогодняя распродажа' },
+                        size: { type: 'number', example: 15.5 },
+                        type: { type: 'string', example: 'percentage' }
+                    }
+                }
+            }
+        }
+    })
+    @ApiBadRequestResponse({ description: 'Промокод недействителен' })
+    async applyDiscountToCart(
+        @Req() req: any,
+        @Body('code') code: string
+    ) {
+        if (!code) {
+            throw new HttpException('Код промокода обязателен', HttpStatus.BAD_REQUEST);
+        }
+        const result = await this.cartService.applyDiscountToCart(req.user.id, code);
+        return {
+            message: `Промокод ${code} успешно применен`,
+            cart: result
+        };
+    }
+
+    @Delete('discount')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: 'Убрать скидку из корзины',
+        description: 'Удаляет примененную скидку из корзины.'
+    })
+    @ApiOkResponse({
+        description: 'Скидка удалена',
+        schema: {
+            type: 'object',
+            properties: {
+                message: { type: 'string', example: 'Скидка удалена из корзины' }
+            }
+        }
+    })
+    async removeDiscountFromCart(@Req() req: any) {
+        return this.cartService.removeDiscountFromCart(req.user.id);
     }
 
 }

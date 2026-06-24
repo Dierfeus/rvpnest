@@ -54,21 +54,17 @@ export class OrdersService {
         );
       }
 
-      // 3. Рассчитываем сумму
       let subtotal = 0;
       const orderItemsData: {
         id_product: number;
         quantity: number;
         price_at_time: number;
       }[] = [];
-      const productIds: number[] = [];
 
       for (const cartItem of cartItems) {
         const product = await this.productsService.getOne(cartItem.id_product);
         const price = Number(product.price);
-        const itemTotal = price * cartItem.quantity;
-        subtotal += itemTotal;
-        productIds.push(cartItem.id_product);
+        subtotal += price * cartItem.quantity;
 
         orderItemsData.push({
           id_product: cartItem.id_product,
@@ -81,14 +77,28 @@ export class OrdersService {
       let discountId: number | null = null;
       let finalTotal = subtotal;
 
-      if (dto.id_discount) {
+      // Сначала пробуем взять скидку из корзины
+      const cartDiscount = cartItems.find(item => item.id_discount);
+      if (cartDiscount && cartDiscount.id_discount) {
+        const discount = await this.discountsService.validateAndGetDiscount(
+            cartDiscount.id_discount,
+            subtotal,
+            dto.id_buyer
+        );
+        if (discount) {
+          discountId = discount.id_discount;
+          discountAmount = cartItems.reduce((sum, item) => sum + (item.discount_amount || 0), 0);
+          finalTotal = subtotal - discountAmount;
+        }
+      }
+
+      else if (dto.id_discount) {
         try {
           const discount = await this.discountsService.validateAndGetDiscount(
               dto.id_discount,
               subtotal,
               dto.id_buyer
           );
-
           if (discount) {
             discountId = discount.id_discount;
             discountAmount = this.calculateDiscountAmount(subtotal, discount);
