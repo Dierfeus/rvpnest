@@ -1,6 +1,5 @@
-// write-off.model.ts
 import { Column, DataType, Model, Table, ForeignKey, BelongsTo } from 'sequelize-typescript';
-import { Product } from '../products/products.model';
+import { Product } from './products.model';
 import { Order } from '../orders/order.model';
 
 @Table({ tableName: 'write_offs', timestamps: true })

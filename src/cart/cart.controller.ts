@@ -189,23 +189,5 @@ export class CartController {
         return this.cartService.removeDiscountFromCart(req.user.id);
     }
 
-    @Delete('clean')
-    @HttpCode(HttpStatus.OK)
-    @ApiOperation({
-        summary: 'Очистить некорректные записи корзины',
-        description: 'Удаляет записи корзины с некорректными ID товаров.'
-    })
-    @ApiOkResponse({
-        description: 'Некорректные записи удалены',
-        schema: {
-            type: 'object',
-            properties: {
-                cleaned: { type: 'number', example: 1 }
-            }
-        }
-    })
-    async cleanInvalidCart(@Req() req: any) {
-        return this.cartService.cleanInvalidCartItems(req.user.id);
-    }
 
 }

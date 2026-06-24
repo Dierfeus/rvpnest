@@ -4,10 +4,12 @@ import { CartItem } from './cart-item.model';
 import { Product } from '../products/products.model';
 import { AddToCartDto } from './dto/add-to-cart.dto';
 import { DiscountsService } from '../discounts/discounts.service';
+import {ProductsService} from "../products/products.service";
 
 @Injectable()
 export class CartService {
     constructor(
+        private productsService: ProductsService,
         @InjectModel(CartItem) private cartItemRepository: typeof CartItem,
         @InjectModel(Product) private productRepository: typeof Product,
         private discountsService: DiscountsService,
@@ -85,7 +87,7 @@ export class CartService {
         if (!product) {
             throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
         }
-        const stock = product.getDataValue('stock') || 0;
+        const stock = await this.productsService.getProductStock(product.id_product);
         const quantity = dto.quantity || 1;
         if (stock < quantity) {
             throw new HttpException(
@@ -142,7 +144,7 @@ export class CartService {
         if (!product) {
             throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
         }
-        const stock = product.getDataValue('stock') || 0;
+        const stock = await this.productsService.getProductStock(product.id_product);
         if (stock < quantity) {
             throw new HttpException(
                 `Недостаточно товара на складе. Доступно: ${stock}`,

@@ -1,12 +1,12 @@
+// products.controller.ts
 import {
-  Controller, Get, Post, Body, Param, Put, Delete, UseGuards,
-  Query, HttpCode, HttpStatus
+  Controller, Get, Post, Put, Delete, Body, Param,
+  UseGuards, HttpCode, HttpStatus, Query, Req
 } from '@nestjs/common';
 import {
   ApiTags, ApiOperation, ApiResponse, ApiBearerAuth,
-  ApiParam, ApiBody, ApiQuery, ApiOkResponse, ApiCreatedResponse,
-  ApiNotFoundResponse, ApiBadRequestResponse, ApiForbiddenResponse,
-  ApiUnauthorizedResponse
+  ApiParam, ApiQuery, ApiBody, ApiOkResponse, ApiCreatedResponse,
+  ApiNotFoundResponse, ApiBadRequestResponse, ApiUnauthorizedResponse
 } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -19,289 +19,131 @@ import { RolesGuard } from '../auth/roles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @ApiTags('Товары')
+@ApiBearerAuth('JWT-auth')
 @Controller('products')
 export class ProductsController {
   constructor(private productsService: ProductsService) {}
 
+  @Post()
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiOperation({ summary: 'Создать товар (Админ)' })
+  @ApiCreatedResponse({ type: Product })
+  async createProduct(@Body() dto: CreateProductDto) {
+    return this.productsService.createProduct(dto);
+  }
+
   @Get()
-  @ApiOperation({
-    summary: 'Получить все товары',
-    description: 'Возвращает список всех активных товаров с пагинацией и фильтрацией.'
-  })
-  @ApiOkResponse({
-    type: [Product],
-    description: 'Список товаров'
-  })
-  @ApiQuery({
-    name: 'categoryId',
-    required: false,
-    type: Number,
-    description: 'Фильтр по категории'
-  })
-  @ApiQuery({
-    name: 'minPrice',
-    required: false,
-    type: Number,
-    description: 'Минимальная цена'
-  })
-  @ApiQuery({
-    name: 'maxPrice',
-    required: false,
-    type: Number,
-    description: 'Максимальная цена'
-  })
-  @ApiQuery({
-    name: 'search',
-    required: false,
-    type: String,
-    description: 'Поиск по названию'
-  })
-  @ApiQuery({
-    name: 'limit',
-    required: false,
-    type: Number,
-    description: 'Количество записей на странице'
-  })
-  @ApiQuery({
-    name: 'offset',
-    required: false,
-    type: Number,
-    description: 'Смещение для пагинации'
-  })
-  async getAll(
+  @ApiOperation({ summary: 'Получить все товары' })
+  @ApiOkResponse({ type: [Product] })
+  @ApiQuery({ name: 'categoryId', required: false, type: Number })
+  @ApiQuery({ name: 'minPrice', required: false, type: Number })
+  @ApiQuery({ name: 'maxPrice', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'offset', required: false, type: Number })
+  async getAllProducts(
       @Query('categoryId') categoryId?: number,
       @Query('minPrice') minPrice?: number,
       @Query('maxPrice') maxPrice?: number,
       @Query('search') search?: string,
-      @Query('limit') limit: number = 20,
-      @Query('offset') offset: number = 0
+      @Query('limit') limit: number = 10,
+      @Query('offset') offset: number = 0,
   ) {
-    return this.productsService.getAll({ categoryId, minPrice, maxPrice, search, limit, offset });
+    return this.productsService.getAll({
+      categoryId,
+      minPrice,
+      maxPrice,
+      search,
+      limit,
+      offset
+    });
   }
 
   @Get(':id')
-  @ApiOperation({
-    summary: 'Получить товар по ID',
-    description: 'Возвращает полную информацию о товаре.'
-  })
-  @ApiParam({
-    name: 'id',
-    type: 'number',
-    description: 'ID товара',
-    example: 1
-  })
-  @ApiOkResponse({
-    type: Product,
-    description: 'Информация о товаре'
-  })
+  @ApiOperation({ summary: 'Получить товар по ID' })
+  @ApiParam({ name: 'id', type: 'number' })
+  @ApiOkResponse({ type: Product })
   @ApiNotFoundResponse({ description: 'Товар не найден' })
-  async getOne(@Param('id') id: number) {
+  async getProductById(@Param('id') id: number) {
     return this.productsService.getOne(id);
   }
 
-  @Get(':id/characteristics')
-  @ApiOperation({
-    summary: 'Получить характеристики товара',
-    description: 'Возвращает все характеристики товара с их значениями.'
-  })
-  @ApiParam({
-    name: 'id',
-    type: 'number',
-    description: 'ID товара',
-    example: 1
-  })
-  @ApiOkResponse({
-    description: 'Характеристики товара'
-  })
-  async getProductCharacteristics(@Param('id') id: number) {
-    return this.productsService.getProductCharacteristics(id);
+  @Get(':id/stock')
+  @ApiOperation({ summary: 'Получить остаток товара' })
+  @ApiParam({ name: 'id', type: 'number' })
+  @ApiOkResponse({ schema: { properties: { productId: { type: 'number' }, stock: { type: 'number' } } } })
+  async getProductStock(@Param('id') id: number) {
+    const stock = await this.productsService.getProductStock(id);
+    return { productId: id, stock };
   }
 
-  @Get(':id/price')
-  @ApiOperation({
-    summary: 'Получить цену товара',
-    description: 'Возвращает текущую цену товара.'
-  })
-  @ApiParam({
-    name: 'id',
-    type: 'number',
-    description: 'ID товара',
-    example: 1
-  })
-  @ApiOkResponse({
-    schema: {
-      type: 'object',
-      properties: {
-        price: { type: 'number', example: 49990 }
-      }
-    }
-  })
-  async getProductPrice(@Param('id') id: number) {
-    return this.productsService.getProductPrice(id);
-  }
-
-  @Get('entrance/:productId')
-  @ApiOperation({
-    summary: 'Получить историю приходов товара',
-    description: 'Возвращает все записи о приходах товара.'
-  })
-  @ApiParam({
-    name: 'productId',
-    type: 'number',
-    description: 'ID товара',
-    example: 1
-  })
-  @ApiOkResponse({
-    description: 'История приходов товара'
-  })
-  async getEntrances(@Param('productId') productId: number) {
-    return this.productsService.getEntrancesByProduct(productId);
-  }
-
-  @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'seller')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({
-    summary: 'Создать товар',
-    description: 'Создание нового товара. Доступно администраторам и продавцам.'
-  })
-  @ApiBody({ type: CreateProductDto })
-  @ApiCreatedResponse({
-    type: Product,
-    description: 'Товар успешно создан'
-  })
-  @ApiBadRequestResponse({ description: 'Некорректные данные' })
-  @ApiForbiddenResponse({ description: 'Недостаточно прав' })
-  @ApiUnauthorizedResponse({ description: 'Пользователь не авторизован' })
-  async create(@Body() dto: CreateProductDto) {
-    return this.productsService.create(dto);
-  }
-
-  @Put(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'seller')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({
-    summary: 'Обновить товар',
-    description: 'Обновление данных товара. Доступно администраторам и продавцам.'
-  })
-  @ApiParam({
-    name: 'id',
-    type: 'number',
-    description: 'ID товара',
-    example: 1
-  })
-  @ApiBody({ type: UpdateProductDto })
-  @ApiOkResponse({
-    type: Product,
-    description: 'Товар успешно обновлен'
-  })
-  @ApiNotFoundResponse({ description: 'Товар не найден' })
-  @ApiForbiddenResponse({ description: 'Недостаточно прав' })
-  async update(
-      @Param('id') id: number,
-      @Body() dto: UpdateProductDto
-  ) {
-    return this.productsService.update(id, dto);
-  }
-
-  @Delete(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'seller')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({
-    summary: 'Удалить товар',
-    description: 'Полное удаление товара. Доступно администраторам и продавцам.'
-  })
-  @ApiParam({
-    name: 'id',
-    type: 'number',
-    description: 'ID товара',
-    example: 1
-  })
-  @ApiOkResponse({
-    description: 'Товар успешно удален'
-  })
-  @ApiNotFoundResponse({ description: 'Товар не найден' })
-  @ApiForbiddenResponse({ description: 'Недостаточно прав' })
-  async delete(@Param('id') id: number) {
-    return this.productsService.delete(id);
-  }
-
-  @Post('characteristics')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'seller')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({
-    summary: 'Добавить характеристики товару',
-    description: 'Привязывает характеристики к товару. Доступно администраторам и продавцам.'
-  })
-  @ApiBody({ type: AddProductCharacteristicDto })
-  @ApiOkResponse({
-    description: 'Характеристики успешно добавлены'
-  })
-  @ApiBadRequestResponse({ description: 'Некорректные данные' })
-  @ApiNotFoundResponse({ description: 'Товар или характеристика не найдены' })
-  @ApiForbiddenResponse({ description: 'Недостаточно прав' })
-  async addCharacteristics(@Body() dto: AddProductCharacteristicDto) {
-    return this.productsService.addCharacteristics(dto);
+  @Get(':id/movement')
+  @ApiOperation({ summary: 'Получить движение товара' })
+  @ApiParam({ name: 'id', type: 'number' })
+  async getProductMovement(@Param('id') id: number) {
+    return this.productsService.getProductMovement(id);
   }
 
   @Post('entrance')
+  @Roles('admin')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'seller')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({
-    summary: 'Записать приход товара',
-    description: 'Добавляет запись о приходе товара. Доступно администраторам и продавцам.'
-  })
+  @ApiOperation({ summary: 'Добавить поступление товара (Админ)' })
   @ApiBody({ type: CreateEntranceDto })
-  @ApiCreatedResponse({
-    description: 'Приход успешно записан'
-  })
-  @ApiBadRequestResponse({ description: 'Некорректные данные' })
-  @ApiNotFoundResponse({ description: 'Товар не найден' })
-  @ApiForbiddenResponse({ description: 'Недостаточно прав' })
+  @ApiCreatedResponse({ description: 'Поступление добавлено' })
   async createEntrance(@Body() dto: CreateEntranceDto) {
     return this.productsService.createEntrance(dto);
   }
 
-  @Get(':id/movements')
-  @ApiOperation({
-    summary: 'Получить историю движений товара',
-    description: 'Возвращает полную историю приходов и списаний товара.'
-  })
-  @ApiParam({ name: 'id', type: 'number', description: 'ID товара' })
-  @ApiOkResponse({ description: 'История движений товара' })
-  async getProductMovements(@Param('id') id: number) {
-    return this.productsService.getProductMovements(id);
+  @Put(':id')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiOperation({ summary: 'Обновить товар (Админ)' })
+  @ApiParam({ name: 'id', type: 'number' })
+  @ApiOkResponse({ type: Product })
+  @ApiNotFoundResponse({ description: 'Товар не найден' })
+  async updateProduct(
+      @Param('id') id: number,
+      @Body() dto: UpdateProductDto,
+  ) {
+    return this.productsService.updateProduct(id, dto);
   }
 
-  @Get(':id/stock')
-  @ApiOperation({
-    summary: 'Получить текущий остаток товара',
-    description: 'Возвращает текущее количество товара на складе.'
-  })
-  @ApiParam({ name: 'id', type: 'number', description: 'ID товара' })
-  @ApiOkResponse({
-    schema: {
-      type: 'object',
-      properties: {
-        productId: { type: 'number', example: 1 },
-        name: { type: 'string', example: 'Ноутбук Lenovo' },
-        stock: { type: 'number', example: 10 }
-      }
-    }
-  })
-  async getStock(@Param('id') id: number) {
-    const product = await this.productsService.getOne(id);
-    return {
-      productId: product.id_product,
-      name: product.name,
-      stock: product.stock
-    };
+  @Delete(':id')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Удалить товар (Админ)' })
+  @ApiParam({ name: 'id', type: 'number' })
+  @ApiNotFoundResponse({ description: 'Товар не найден' })
+  async deleteProduct(@Param('id') id: number) {
+    return this.productsService.deleteProduct(id);
   }
-  
+
+  @Post('characteristics')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiOperation({ summary: 'Добавить характеристики товару (Админ)' })
+  @ApiBody({ type: AddProductCharacteristicDto })
+  @ApiCreatedResponse({ description: 'Характеристики добавлены' })
+  async addCharacteristics(@Body() dto: AddProductCharacteristicDto) {
+    return this.productsService.addCharacteristics(dto);
+  }
+
+  @Post(':id/entrance')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiOperation({ summary: 'Добавить поступление товара по ID (Админ)' })
+  @ApiParam({ name: 'id', type: 'number' })
+  @ApiBody({ schema: { properties: { quantity: { type: 'number' }, purchasePrice: { type: 'number' } } } })
+  async addEntrance(
+      @Param('id') id: number,
+      @Body() body: { quantity: number; purchasePrice: number },
+  ) {
+    return this.productsService.addEntrance(
+        id,
+        body.quantity,
+        body.purchasePrice,
+    );
+  }
 }

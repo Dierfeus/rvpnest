@@ -1,25 +1,11 @@
-import { Column, DataType, Model, Table, ForeignKey, BelongsTo, BelongsToMany, HasMany } from 'sequelize-typescript';
+import { Column, DataType, Model, Table, ForeignKey, BelongsTo, HasMany } from 'sequelize-typescript';
 import { Category } from '../categories/categories.model';
-import { CharacteristicValue } from '../characteristics/characteristic-value.model';
-import { ProductCharacteristic } from './product-characteristic.model';
+import { User } from '../users/users.model';
 import { Entrance } from './entrance.model';
-import { ProductDiscount } from '../discounts/product-discount.model';
-import { OrderItem } from '../orders/order-item.model';
-import { CartItem } from '../cart/cart-item.model';
-
-interface ProductCreationAttrs {
-  name: string;
-  id_category: number;
-  price: number;
-  description?: string;
-  id_user?: number;
-  images?: string[];
-  condition?: string;
-  is_active?: boolean;
-}
+import { WriteOff } from './write-off.model';
 
 @Table({ tableName: 'products', timestamps: true })
-export class Product extends Model<Product, ProductCreationAttrs> {
+export class Product extends Model<Product> {
   @Column({ type: DataType.INTEGER, primaryKey: true, autoIncrement: true })
   id_product: number;
 
@@ -36,17 +22,15 @@ export class Product extends Model<Product, ProductCreationAttrs> {
   @Column({ type: DataType.TEXT, allowNull: true })
   description: string;
 
-  @Column({ type: DataType.ARRAY(DataType.STRING), allowNull: true })
+  @Column({ type: DataType.JSON, allowNull: true })
   images: string[];
 
   @Column({ type: DataType.STRING, allowNull: true })
   condition: string;
 
-  @Column({ type: DataType.INTEGER, allowNull: true })
+  @ForeignKey(() => User)
+  @Column({ type: DataType.INTEGER })
   id_user: number;
-
-  @Column({ type: DataType.INTEGER, defaultValue: 0 })
-  stock: number;
 
   @Column({ type: DataType.BOOLEAN, defaultValue: true })
   is_active: boolean;
@@ -54,18 +38,12 @@ export class Product extends Model<Product, ProductCreationAttrs> {
   @BelongsTo(() => Category)
   category: Category;
 
-  @BelongsToMany(() => CharacteristicValue, () => ProductCharacteristic)
-  characteristicValues: CharacteristicValue[];
+  @BelongsTo(() => User)
+  user: User;
 
   @HasMany(() => Entrance)
   entrances: Entrance[];
 
-  @HasMany(() => ProductDiscount)
-  productDiscounts: ProductDiscount[];
-
-  @HasMany(() => OrderItem)
-  orderItems: OrderItem[];
-
-  @HasMany(() => CartItem)
-  cartItems: CartItem[];
+  @HasMany(() => WriteOff)
+  write_offs: WriteOff[];
 }

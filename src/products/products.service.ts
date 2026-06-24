@@ -1,159 +1,127 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Product } from './products.model';
-import { ProductCharacteristic } from './product-characteristic.model';
 import { Entrance } from './entrance.model';
 import { WriteOff } from './write-off.model';
+import { ProductCharacteristic } from './product-characteristic.model';
+import { Sequelize } from 'sequelize-typescript';
+import { Transaction } from 'sequelize';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { AddProductCharacteristicDto } from './dto/add-product-characteristic.dto';
 import { CreateEntranceDto } from './dto/create-entrance.dto';
-import { CategoriesService } from '../categories/categories.service';
-import { CharacteristicsService } from '../characteristics/characteristics.service';
-import {Op, Sequelize, Transaction} from 'sequelize';
 
 @Injectable()
 export class ProductsService {
   constructor(
       @InjectModel(Product) private productRepository: typeof Product,
-      @InjectModel(ProductCharacteristic) private productCharacteristicRepository: typeof ProductCharacteristic,
       @InjectModel(Entrance) private entranceRepository: typeof Entrance,
       @InjectModel(WriteOff) private writeOffRepository: typeof WriteOff,
-      private categoriesService: CategoriesService,
-      private characteristicsService: CharacteristicsService,
+      @InjectModel(ProductCharacteristic) private productCharacteristicRepository: typeof ProductCharacteristic,
+      private sequelize: Sequelize,
   ) {}
 
-  async create(dto: CreateProductDto) {
-    const category = await this.categoriesService.getOne(dto.id_category);
-    if (!category) {
-      throw new HttpException('Категория не найдена', HttpStatus.NOT_FOUND);
-    }
-    return this.productRepository.create(dto as any);
+  async getProductStock(productId: number): Promise<number> {
+    const totalEntrance = await this.entranceRepository.sum('quantity', {
+      where: { id_product: productId }
+    });
+
+    const totalWriteOff = await this.writeOffRepository.sum('quantity', {
+      where: { id_product: productId }
+    });
+
+    const stock = (totalEntrance || 0) - (totalWriteOff || 0);
+    return Math.max(0, stock);
   }
 
-  async getAll(filters?: {
-    categoryId?: number;
-    minPrice?: number;
-    maxPrice?: number;
-    search?: string;
-    limit?: number;
-    offset?: number;
-  }) {
-    const where: any = { is_active: true };
+  async checkMultipleStock(items: { productId: number; quantity: number }[]) {
+    const results: any[] = [];
+    let allAvailable = true;
 
-    if (filters?.categoryId) {
-      where.id_category = filters.categoryId;
+    for (const item of items) {
+      const currentStock = await this.getProductStock(item.productId);
+      const available = currentStock >= item.quantity;
+
+      results.push({
+        productId: item.productId,
+        currentStock,
+        required: item.quantity,
+        available,
+      });
+
+      if (!available) allAvailable = false;
     }
 
-    if (filters?.minPrice !== undefined) {
-      where.price = { [Op.gte]: filters.minPrice };
+    return {
+      available: allAvailable,
+      details: results,
+    };
+  }
+
+  async decreaseStockWithLock(
+      productId: number,
+      quantity: number,
+      orderId: number,
+      transaction: Transaction,
+  ) {
+    const currentStock = await this.getProductStock(productId);
+
+    if (currentStock < quantity) {
+      throw new HttpException(
+          `Недостаточно товара на складе. Доступно: ${currentStock}, требуется: ${quantity}`,
+          HttpStatus.BAD_REQUEST,
+      );
     }
 
-    if (filters?.maxPrice !== undefined) {
-      where.price = { ...where.price, [Op.lte]: filters.maxPrice };
-    }
-
-    if (filters?.search) {
-      where.name = { [Op.iLike]: `%${filters.search}%` };
-    }
-
-    const products = await this.productRepository.findAll({
-      where,
-      include: [
-        'category',
+    await this.writeOffRepository.create(
         {
-          association: 'characteristicValues',
-          include: ['characteristic']
-        },
-        'entrances'
-      ],
-      limit: filters?.limit || 20,
-      offset: filters?.offset || 0,
-      order: [['createdAt', 'DESC']]
+          id_product: productId,
+          id_order: orderId,
+          date: new Date(),
+          quantity: quantity,
+          reason: `Продажа по заказу #${orderId}`,
+        } as any,
+        { transaction },
+    );
+
+    return { productId, newStock: currentStock - quantity };
+  }
+
+  async restoreStockFromOrder(orderId: number, transaction: Transaction) {
+    const writeOffs = await this.writeOffRepository.findAll({
+      where: { id_order: orderId },
+      transaction,
     });
-    return products.map(product => product.toJSON());
-  }
 
-  async getOne(id: number) {
-    const product = await this.productRepository.findByPk(id, {
-      include: [
-        'category',
-        {
-          association: 'characteristicValues',
-          include: ['characteristic']
-        },
-        'entrances'
-      ],
-    });
-    if (!product) {
-      throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
+    for (const writeOff of writeOffs) {
+      await writeOff.destroy({ transaction });
     }
-    return product.toJSON();
+
+    return { restored: writeOffs.length };
   }
 
-  async getProductPrice(id: number): Promise<{ price: number }> {
-    const product = await this.productRepository.findByPk(id, {
-      attributes: ['price']
-    });
-    if (!product) {
-      throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
-    }
-    return { price: parseFloat(String(product.getDataValue('price'))) || 0 };
-  }
-
-  async update(id: number, dto: UpdateProductDto) {
-    const product = await this.productRepository.findByPk(id);
-    if (!product) {
-      throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
-    }
-    await product.update(dto);
-    return this.getOne(id);
-  }
-
-  async delete(id: number) {
-    const product = await this.getOne(id);
-    await this.productRepository.destroy({ where: { id_product: id } });
-    return { message: 'Товар удален' };
-  }
-
-  async getStock(productId: number): Promise<number> {
+  async addEntrance(
+      productId: number,
+      quantity: number,
+      purchasePrice: number,
+      transaction?: Transaction,
+  ) {
     const product = await this.productRepository.findByPk(productId);
     if (!product) {
       throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
     }
-    return product.getDataValue('stock') || 0;
-  }
 
-  async checkStock(productId: number, quantity: number = 1): Promise<boolean> {
-    const currentStock = await this.getStock(productId);
-    return currentStock >= quantity;
-  }
+    const entrance = await this.entranceRepository.create(
+        {
+          id_product: productId,
+          date: new Date(),
+          purchase_price: purchasePrice,
+          quantity: quantity,
+        } as any,
+        { transaction },
+    );
 
-  async checkMultipleStock(items: { productId: number; quantity: number }[]): Promise<{
-    available: boolean;
-    insufficient: { productId: number; name: string; available: number; required: number }[];
-  }> {
-    const insufficient: { productId: number; name: string; available: number; required: number }[] = [];
-
-    for (const item of items) {
-      const product = await this.productRepository.findByPk(item.productId);
-      if (!product) {
-        throw new HttpException(`Товар с ID ${item.productId} не найден`, HttpStatus.NOT_FOUND);
-      }
-      const currentStock = product.getDataValue('stock') || 0;
-      if (currentStock < item.quantity) {
-        insufficient.push({
-          productId: item.productId,
-          name: product.getDataValue('name'),
-          available: currentStock,
-          required: item.quantity
-        });
-      }
-    }
-    return {
-      available: insufficient.length === 0,
-      insufficient
-    };
+    return entrance;
   }
 
   async createEntrance(dto: CreateEntranceDto) {
@@ -162,101 +130,195 @@ export class ProductsService {
       throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
     }
 
-    const quantity = dto.quantity || 1;
-
     const entrance = await this.entranceRepository.create({
       id_product: dto.id_product,
       date: new Date(dto.date),
       purchase_price: dto.purchase_price,
-      quantity: quantity,
+      quantity: dto.quantity || 1,
     } as any);
 
-    const currentStock = product.getDataValue('stock') || 0;
-    await product.update({
-      stock: currentStock + quantity
-    });
-
-    return entrance.toJSON();
+    return entrance;
   }
 
-  async createWriteOff(productId: number, orderId: number, quantity: number, reason?: string) {
-    const product = await this.productRepository.findByPk(productId);
+  async getEntrancesByProduct(productId: number) {
+    return this.entranceRepository.findAll({
+      where: { id_product: productId },
+      order: [['date', 'DESC']],
+    });
+  }
+
+  async createProduct(dto: CreateProductDto) {
+    const product = await this.productRepository.create(dto as any);
+    return product;
+  }
+
+  async getAllProducts() {
+    const products = await this.productRepository.findAll({
+      include: ['category', 'user'],
+    });
+
+    const result: any[] = [];
+    for (const product of products) {
+      const stock = await this.getProductStock(product.id_product);
+      const productData = product.toJSON();
+      result.push({
+        ...productData,
+        stock,
+      });
+    }
+
+    return result;
+  }
+
+  async getOne(id: number) {
+    const product = await this.productRepository.findByPk(id, {
+      include: ['category', 'user'],
+    });
+
     if (!product) {
       throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
     }
 
-    const currentStock = product.getDataValue('stock') || 0;
-    if (currentStock < quantity) {
-      throw new HttpException(
-          `Недостаточно товара "${product.getDataValue('name')}". Доступно: ${currentStock}, требуется: ${quantity}`,
-          HttpStatus.BAD_REQUEST
-      );
-    }
-
-    const writeOff = await this.writeOffRepository.create({
-      id_product: productId,
-      id_order: orderId,
-      date: new Date(),
-      quantity: quantity,
-      reason: reason || `Продажа по заказу #${orderId}`,
-    } as any);
-
-    await product.update({
-      stock: currentStock - quantity
-    });
-
-    return writeOff.toJSON();
-  }
-
-  async getProductMovements(productId: number) {
-    const product = await this.productRepository.findByPk(productId);
-    if (!product) {
-      throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
-    }
-
-    const entrances = await this.entranceRepository.findAll({
-      where: { id_product: productId },
-      order: [['date', 'DESC']]
-    });
-
-    const writeOffs = await this.writeOffRepository.findAll({
-      where: { id_product: productId },
-      include: ['order'],
-      order: [['date', 'DESC']]
-    });
-
-    // Объединяем и сортируем
-    const movements = [
-      ...entrances.map(e => ({
-        type: 'приход',
-        date: e.getDataValue('date'),
-        quantity: e.getDataValue('quantity'),
-        purchase_price: e.getDataValue('purchase_price'),
-        details: `Поступление #${e.getDataValue('id_entrance')}`
-      })),
-      ...writeOffs.map(w => ({
-        type: 'списание',
-        date: w.getDataValue('date'),
-        quantity: -w.getDataValue('quantity'),
-        purchase_price: null,
-        details: w.getDataValue('reason') || `Списание #${w.getDataValue('id_write_off')}`
-      }))
-    ];
-
-    movements.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const stock = await this.getProductStock(id);
+    const productData = product.toJSON();
 
     return {
-      product: product.toJSON(),
-      currentStock: product.getDataValue('stock') || 0,
-      movements
+      ...productData,
+      stock,
     };
   }
 
-  async getEntrancesByProduct(id_product: number) {
-    return this.entranceRepository.findAll({
-      where: { id_product },
-      include: ['product']
+  async updateProduct(id: number, dto: UpdateProductDto) {
+    const product = await this.productRepository.findByPk(id);
+
+    if (!product) {
+      throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
+    }
+
+    await product.update(dto);
+    return this.getOne(id);
+  }
+
+  async deleteProduct(id: number) {
+    const product = await this.productRepository.findByPk(id);
+
+    if (!product) {
+      throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
+    }
+
+    await product.destroy();
+    return { message: 'Товар удален' };
+  }
+
+  async getProductsByCategory(categoryId: number) {
+    const products = await this.productRepository.findAll({
+      where: { id_category: categoryId },
+      include: ['category', 'user'],
     });
+
+    const result: any[] = [];
+    for (const product of products) {
+      const stock = await this.getProductStock(product.id_product);
+      const productData = product.toJSON();
+      result.push({
+        ...productData,
+        stock,
+      });
+    }
+
+    return result;
+  }
+
+  async getProductsByUser(userId: number) {
+    const products = await this.productRepository.findAll({
+      where: { id_user: userId },
+      include: ['category', 'user'],
+    });
+
+    const result: any[] = [];
+    for (const product of products) {
+      const stock = await this.getProductStock(product.id_product);
+      const productData = product.toJSON();
+      result.push({
+        ...productData,
+        stock,
+      });
+    }
+
+    return result;
+  }
+
+  async getProductWithStock(id: number) {
+    const product = await this.productRepository.findByPk(id);
+
+    if (!product) {
+      throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
+    }
+
+    const stock = await this.getProductStock(id);
+    const productData = product.toJSON();
+
+    return {
+      ...productData,
+      stock,
+    };
+  }
+
+  async getMultipleProductsWithStock(ids: number[]) {
+    const products = await this.productRepository.findAll({
+      where: { id_product: ids },
+      include: ['category', 'user'],
+    });
+
+    const result: any[] = [];
+    for (const product of products) {
+      const stock = await this.getProductStock(product.id_product);
+      const productData = product.toJSON();
+      result.push({
+        ...productData,
+        stock,
+      });
+    }
+
+    return result;
+  }
+
+  async getEntranceHistory(productId: number) {
+    return this.entranceRepository.findAll({
+      where: { id_product: productId },
+      order: [['date', 'DESC']],
+    });
+  }
+
+  async getWriteOffHistory(productId: number) {
+    return this.writeOffRepository.findAll({
+      where: { id_product: productId },
+      include: ['order'],
+      order: [['date', 'DESC']],
+    });
+  }
+
+  async getProductMovement(productId: number) {
+    const entrances = await this.getEntranceHistory(productId);
+    const writeOffs = await this.getWriteOffHistory(productId);
+
+    return {
+      entrances,
+      writeOffs,
+      currentStock: await this.getProductStock(productId),
+    };
+  }
+
+  async getProductMovements(productId: number) {
+    return this.getProductMovement(productId);
+  }
+
+  async getProductCharacteristics(productId: number) {
+    const characteristics = await this.productCharacteristicRepository.findAll({
+      where: { id_product: productId },
+      include: ['characteristicValue'],
+    });
+    return characteristics;
   }
 
   async addCharacteristics(dto: AddProductCharacteristicDto) {
@@ -265,102 +327,74 @@ export class ProductsService {
       throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
     }
 
-    if (!dto.characteristicValueIds || !Array.isArray(dto.characteristicValueIds)) {
-      throw new HttpException('Не передан массив значений характеристик', HttpStatus.BAD_REQUEST);
-    }
-
+    const results: any[] = [];
     for (const valueId of dto.characteristicValueIds) {
-      const value = await this.characteristicsService.getCharacteristicValueById(valueId);
-      if (!value) {
-        throw new HttpException(
-            `Значение характеристики с ID ${valueId} не найдено`,
-            HttpStatus.NOT_FOUND
-        );
-      }
-    }
-
-    await this.productCharacteristicRepository.destroy({
-      where: { id_product: dto.id_product }
-    });
-
-    for (const valueId of dto.characteristicValueIds) {
-      await this.productCharacteristicRepository.create({
+      const pc = await this.productCharacteristicRepository.create({
         id_product: dto.id_product,
         id_characters_value: valueId,
       } as any);
+      results.push(pc);
     }
 
-    return this.getOne(dto.id_product);
+    return results;
   }
 
-  async getProductCharacteristics(productId: number) {
-    const product = await this.productRepository.findByPk(productId, {
-      include: [
-        {
-          association: 'characteristicValues',
-          include: ['characteristic']
-        }
-      ]
-    });
-
+  async getProductPrice(productId: number) {
+    const product = await this.productRepository.findByPk(productId);
     if (!product) {
       throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
     }
-    const characteristics = product.characteristicValues || [];
-    return characteristics.map(cv => ({
-      id: cv.id_characters_value,
-      value: cv.value,
-      description: cv.description,
-      characteristic: cv.characteristic ? {
-        id: cv.characteristic.id_characteristic,
-        name: cv.characteristic.name,
-        unit: cv.characteristic.unit,
-        group: cv.characteristic.group
-      } : null
-    }));
+    return { price: product.price };
   }
 
-  async decreaseStockWithLock(
-      productId: number,
-      quantity: number,
-      orderId: number,  // Добавляем параметр orderId
-      transaction: Transaction,
-  ) {
-    // Находим товар с блокировкой
-    const product = await this.productRepository.findOne({
-      where: { id_product: productId },
-      lock: transaction.LOCK.UPDATE,
-      transaction,
-    });
+  async getAll(options: {
+    categoryId?: number;
+    minPrice?: number;
+    maxPrice?: number;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    let products = await this.getAllProducts();
 
-    if (!product) {
-      throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
+    if (options.categoryId) {
+      products = products.filter(p => p.id_category === options.categoryId);
     }
 
-    if (product.stock < quantity) {
-      throw new HttpException(
-          `Недостаточно товара на складе. Доступно: ${product.stock}, требуется: ${quantity}`,
-          HttpStatus.BAD_REQUEST
+    if (options.minPrice !== undefined && options.minPrice !== null) {
+      products = products.filter(p => Number(p.price) >= (options.minPrice || 0));
+    }
+
+    if (options.maxPrice !== undefined && options.maxPrice !== null) {
+      products = products.filter(p => Number(p.price) <= (options.maxPrice || Infinity));
+    }
+
+    if (options.search) {
+      const searchLower = options.search.toLowerCase();
+      products = products.filter(p =>
+          p.name.toLowerCase().includes(searchLower) ||
+          (p.description && p.description.toLowerCase().includes(searchLower))
       );
     }
 
-    // Уменьшаем остаток
-    product.stock = product.stock - quantity;
-    await product.save({ transaction });
+    const start = Number(options.offset) || 0;
+    const end = start + Number(options.limit) || 20;
 
-    // Создаем запись о списании
-    await this.writeOffRepository.create(
-        {
-          id_product: productId,
-          id_order: orderId,  // Теперь orderId не будет undefined
-          date: new Date(),
-          quantity: quantity,
-          reason: `Продажа по заказу #${orderId}`,
-        } as any,
-        { transaction },
-    );
-
-    return product;
+    return {
+      items: products.slice(start, end),
+      total: products.length,
+    };
   }
 
+  async create(dto: CreateProductDto) {
+    return this.createProduct(dto);
+  }
+
+  async update(id: number, dto: UpdateProductDto) {
+    return this.updateProduct(id, dto);
+  }
+
+  async delete(id: number) {
+    return this.deleteProduct(id);
+  }
 }
