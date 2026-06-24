@@ -3,6 +3,7 @@ import { SequelizeModule } from '@nestjs/sequelize';
 import { Product } from './products.model';
 import { ProductCharacteristic } from './product-characteristic.model';
 import { Entrance } from './entrance.model';
+import { WriteOff } from './write-off.model';
 import { ProductsService } from './products.service';
 import { ProductsController } from './products.controller';
 import { CategoriesModule } from '../categories/categories.module';
@@ -11,7 +12,12 @@ import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
-    SequelizeModule.forFeature([Product, ProductCharacteristic, Entrance]),
+    SequelizeModule.forFeature([
+      Product,
+      ProductCharacteristic,
+      Entrance,
+      WriteOff,
+    ]),
     CategoriesModule,
     CharacteristicsModule,
     AuthModule,

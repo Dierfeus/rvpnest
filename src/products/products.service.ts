@@ -116,9 +116,6 @@ export class ProductsService {
     return { message: 'Товар удален' };
   }
 
-  // ==================== УЧЕТ ТОВАРОВ ====================
-
-  // Получить текущий остаток товара
   async getStock(productId: number): Promise<number> {
     const product = await this.productRepository.findByPk(productId);
     if (!product) {
@@ -159,7 +156,6 @@ export class ProductsService {
     };
   }
 
-  // Создать приход товара
   async createEntrance(dto: CreateEntranceDto) {
     const product = await this.productRepository.findByPk(dto.id_product);
     if (!product) {
@@ -168,7 +164,6 @@ export class ProductsService {
 
     const quantity = dto.quantity || 1;
 
-    // Создаем запись прихода
     const entrance = await this.entranceRepository.create({
       id_product: dto.id_product,
       date: new Date(dto.date),
@@ -176,7 +171,6 @@ export class ProductsService {
       quantity: quantity,
     } as any);
 
-    // Обновляем остаток
     const currentStock = product.getDataValue('stock') || 0;
     await product.update({
       stock: currentStock + quantity
@@ -185,7 +179,6 @@ export class ProductsService {
     return entrance.toJSON();
   }
 
-  // Создать списание товара (при создании заказа)
   async createWriteOff(productId: number, orderId: number, quantity: number, reason?: string) {
     const product = await this.productRepository.findByPk(productId);
     if (!product) {
@@ -200,7 +193,6 @@ export class ProductsService {
       );
     }
 
-    // Создаем запись списания
     const writeOff = await this.writeOffRepository.create({
       id_product: productId,
       id_order: orderId,
@@ -209,7 +201,6 @@ export class ProductsService {
       reason: reason || `Продажа по заказу #${orderId}`,
     } as any);
 
-    // Обновляем остаток
     await product.update({
       stock: currentStock - quantity
     });
@@ -217,7 +208,6 @@ export class ProductsService {
     return writeOff.toJSON();
   }
 
-  // Получить историю движений товара
   async getProductMovements(productId: number) {
     const product = await this.productRepository.findByPk(productId);
     if (!product) {
@@ -267,20 +257,6 @@ export class ProductsService {
       where: { id_product },
       include: ['product']
     });
-  }
-
-  async decreaseStock(productId: number, quantity: number = 1) {
-    const product = await this.productRepository.findByPk(productId);
-    if (!product) {
-      throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
-    }
-    if (product.getDataValue('stock') < quantity) {
-      throw new HttpException('Недостаточно товара на складе', HttpStatus.BAD_REQUEST);
-    }
-    await product.update({
-      stock: product.getDataValue('stock') - quantity
-    });
-    return product;
   }
 
   async addCharacteristics(dto: AddProductCharacteristicDto) {
@@ -343,4 +319,40 @@ export class ProductsService {
       } : null
     }));
   }
+
+  async decreaseStockWithLock(productId: number, quantity: number, orderId: number, transaction: any) {
+    const product = await this.productRepository.findOne({
+      where: { id_product: productId },
+      lock: transaction.LOCK.UPDATE,
+      transaction
+    });
+
+    if (!product) {
+      throw new HttpException('Товар не найден', HttpStatus.NOT_FOUND);
+    }
+
+    const currentStock = product.getDataValue('stock') || 0;
+
+    if (currentStock < quantity) {
+      throw new HttpException(
+          `Недостаточно товара "${product.getDataValue('name')}". Доступно: ${currentStock}, требуется: ${quantity}`,
+          HttpStatus.BAD_REQUEST
+      );
+    }
+
+    await this.writeOffRepository.create({
+      id_product: productId,
+      id_order: orderId,
+      date: new Date(),
+      quantity: quantity,
+      reason: `Продажа по заказу #${orderId}`,
+    } as any, { transaction });
+
+    await product.update({
+      stock: currentStock - quantity
+    }, { transaction });
+
+    return product;
+  }
+
 }

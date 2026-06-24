@@ -20,7 +20,6 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 export class CartController {
     constructor(private cartService: CartService) {}
 
-    // ==================== GET ====================
     @Get()
     @ApiOperation({
         summary: 'Получить корзину текущего пользователя',
@@ -69,7 +68,6 @@ export class CartController {
         return this.cartService.getCartTotal(req.user.id);
     }
 
-    // ==================== POST ====================
     @Post()
     @ApiOperation({
         summary: 'Добавить товар в корзину',
@@ -85,7 +83,6 @@ export class CartController {
         return this.cartService.addToCart(req.user.id, dto);
     }
 
-    // ==================== PUT ====================
     @Put(':productId')
     @ApiOperation({
         summary: 'Обновить количество товара в корзине',
@@ -111,37 +108,20 @@ export class CartController {
         return this.cartService.updateQuantity(req.user.id, productId, dto.quantity);
     }
 
-    // ==================== DELETE ====================
-    @Delete(':productId')
+    @Delete(':cartId')
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({
-        summary: 'Удалить товар из корзины',
-        description: 'Удаляет конкретный товар из корзины пользователя.'
+        summary: 'Удалить товар из корзины по ID',
+        description: 'Удаляет конкретный товар из корзины пользователя по id_cart.'
     })
     @ApiParam({
-        name: 'productId',
+        name: 'cartId',
         type: 'number',
-        description: 'ID товара',
+        description: 'ID записи в корзине (id_cart)',
         example: 1
     })
-    @ApiOkResponse({
-        description: 'Товар успешно удален из корзины'
-    })
-    @ApiNotFoundResponse({ description: 'Товар не найден в корзине' })
-    async removeFromCart(@Req() req: any, @Param('productId') productId: number) {
-        return this.cartService.removeFromCart(req.user.id, productId);
+    async removeFromCart(@Req() req: any, @Param('cartId') cartId: number) {
+        return this.cartService.removeFromCart(req.user.id, cartId);
     }
 
-    @Delete()
-    @HttpCode(HttpStatus.NO_CONTENT)
-    @ApiOperation({
-        summary: 'Очистить корзину',
-        description: 'Удаляет все товары из корзины пользователя.'
-    })
-    @ApiOkResponse({
-        description: 'Корзина успешно очищена'
-    })
-    async clearCart(@Req() req: any) {
-        return this.cartService.clearCart(req.user.id);
-    }
 }

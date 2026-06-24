@@ -9,12 +9,14 @@ interface OrderCreationAttrs {
   id_buyer: number;
   date: Date;
   id_discount?: number;
+  subtotal_amount: number;
+  discount_amount: number;
   total_amount: number;
   shipping_address: string;
   payment_method: string;
 }
 
-@Table({ tableName: 'orders', timestamps: false })
+@Table({ tableName: 'orders', timestamps: true })
 export class Order extends Model<Order, OrderCreationAttrs> {
   @Column({ type: DataType.INTEGER, primaryKey: true, autoIncrement: true })
   id_order: number;
@@ -33,6 +35,12 @@ export class Order extends Model<Order, OrderCreationAttrs> {
   @ForeignKey(() => Discount)
   @Column({ type: DataType.INTEGER, allowNull: true })
   id_discount: number;
+
+  @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
+  subtotal_amount: number;
+
+  @Column({ type: DataType.DECIMAL(10, 2), defaultValue: 0 })
+  discount_amount: number;
 
   @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
   total_amount: number;

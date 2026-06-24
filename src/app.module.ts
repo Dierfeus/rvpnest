@@ -27,6 +27,7 @@ import { Discount } from './discounts/discount.model';
 import { DiscountType } from './discounts/discount-type.model';
 import { Order } from './orders/order.model';
 import { OrderItem } from './orders/order-item.model';
+import { WriteOff } from './products/write-off.model';
 import { CartItem } from './cart/cart-item.model';
 import { OrderDelivery } from './orders/order-delivery.model';
 import { OrderStatus } from './orders/order-status.model';
@@ -60,6 +61,7 @@ import { ProductDiscount } from './discounts/product-discount.model';
                 Entrance,
                 Discount,
                 ProductDiscount,
+                WriteOff,
                 DiscountType,
                 Order,
                 OrderItem,

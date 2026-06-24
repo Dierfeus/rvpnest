@@ -18,11 +18,20 @@ export class CartItem extends Model<CartItem> {
   @Column({ type: DataType.INTEGER, defaultValue: 1 })
   quantity: number;
 
+  @Column({ type: DataType.DECIMAL(10, 2), allowNull: true })
+  price_snapshot: number;
+
   @Column({ type: DataType.BOOLEAN, defaultValue: false })
   is_purchased: boolean;
 
   @Column({ type: DataType.DATE, allowNull: true })
   purchased_at: Date;
+
+  @Column({ type: DataType.INTEGER, allowNull: true })
+  id_discount: number;
+
+  @Column({ type: DataType.DECIMAL(10, 2), defaultValue: 0 })
+  discount_amount: number;
 
   @BelongsTo(() => User)
   user: User;

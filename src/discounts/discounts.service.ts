@@ -227,4 +227,45 @@ export class DiscountsService {
     const discount = await this.getDiscountById(discountId);
     return discount.productDiscounts;
   }
+
+  async validateAndGetDiscount(discountId: number, orderAmount: number, userId: number) {
+    const discount = await this.getDiscountById(discountId);
+
+    if (!discount) {
+      throw new HttpException('Скидка не найдена', HttpStatus.NOT_FOUND);
+    }
+
+    if (!discount.is_active) {
+      throw new HttpException('Скидка неактивна', HttpStatus.BAD_REQUEST);
+    }
+
+    const now = new Date();
+    if (now < discount.start_time || now > discount.end_time) {
+      throw new HttpException('Срок действия скидки истек', HttpStatus.BAD_REQUEST);
+    }
+
+
+    if (discount.min_order_amount && orderAmount < discount.min_order_amount) {
+      throw new HttpException(
+          `Минимальная сумма заказа для скидки: ${discount.min_order_amount}`,
+          HttpStatus.BAD_REQUEST
+      );
+    }
+
+
+    if (discount.usage_limit && discount.used_count >= discount.usage_limit) {
+      throw new HttpException('Лимит использований скидки исчерпан', HttpStatus.BAD_REQUEST);
+    }
+
+    return discount;
+  }
+
+  async incrementUsageCount(discountId: number, transaction: any) {
+    const discount = await this.discountRepository.findByPk(discountId, { transaction });
+    if (discount) {
+      discount.used_count = (discount.used_count || 0) + 1;
+      await discount.save({ transaction });
+    }
+  }
+
 }

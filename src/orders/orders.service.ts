@@ -6,6 +6,7 @@ import { OrderDelivery } from './order-delivery.model';
 import { OrderStatus } from './order-status.model';
 import { CartService } from '../cart/cart.service';
 import { ProductsService } from '../products/products.service';
+import { DiscountsService } from '../discounts/discounts.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { Sequelize } from 'sequelize-typescript';
@@ -19,11 +20,11 @@ export class OrdersService {
       @InjectModel(OrderStatus) private orderStatusRepository: typeof OrderStatus,
       private cartService: CartService,
       private productsService: ProductsService,
+      private discountsService: DiscountsService,
       private sequelize: Sequelize,
   ) {}
 
   async createOrder(dto: CreateOrderDto) {
-    // Используем транзакцию для атомарности
     const transaction = await this.sequelize.transaction();
 
     try {
@@ -37,7 +38,7 @@ export class OrdersService {
         throw new HttpException('Выбранные товары не найдены в корзине', HttpStatus.BAD_REQUEST);
       }
 
-      // 2. Проверяем наличие всех товаров на складе
+      // 2. Проверяем остатки
       const stockCheck = await this.productsService.checkMultipleStock(
           cartItems.map(item => ({
             productId: item.id_product,
@@ -55,15 +56,21 @@ export class OrdersService {
         );
       }
 
-      // 3. Вычисляем общую сумму
-      let totalAmount = 0;
-      const orderItemsData = [];
+      // 3. Рассчитываем сумму
+      let subtotal = 0;
+      const orderItemsData: {
+        id_product: number;
+        quantity: number;
+        price_at_time: number;
+      }[] = []; // ✅ Явно указываем тип
+      const productIds: number[] = []; // ✅ Явно указываем тип
 
       for (const cartItem of cartItems) {
         const product = await this.productsService.getOne(cartItem.id_product);
         const price = Number(product.price);
         const itemTotal = price * cartItem.quantity;
-        totalAmount += itemTotal;
+        subtotal += itemTotal;
+        productIds.push(cartItem.id_product);
 
         orderItemsData.push({
           id_product: cartItem.id_product,
@@ -72,32 +79,45 @@ export class OrdersService {
         });
       }
 
-      // 4. Применяем скидку если есть
-      let discountId = null;
+      // 4. Применяем скидку
+      let discountAmount = 0;
+      let discountId: number | null = null; // ✅ Исправляем тип
+      let finalTotal = subtotal;
+
       if (dto.id_discount) {
-        // Здесь можно проверить валидность скидки
-        // и пересчитать totalAmount
-        discountId = dto.id_discount;
-        // Пример применения скидки:
-        // const discount = await this.discountService.getDiscountById(dto.id_discount);
-        // if (discount) {
-        //   totalAmount = this.applyDiscount(totalAmount, discount);
-        // }
+        try {
+          const discount = await this.discountsService.validateAndGetDiscount(
+              dto.id_discount,
+              subtotal,
+              dto.id_buyer
+          );
+
+          if (discount) {
+            discountId = discount.id_discount;
+            discountAmount = this.calculateDiscountAmount(subtotal, discount);
+            finalTotal = subtotal - discountAmount;
+          }
+        } catch (error) {
+          // Если скидка невалидна, просто игнорируем её
+          console.warn('Скидка не применена:', error.message);
+        }
       }
 
-      // 5. Создаем заказ
+      // 5. Создаём заказ
       const order = await this.orderRepository.create({
         id_seller: dto.id_seller,
         id_buyer: dto.id_buyer,
         date: new Date(),
         id_discount: discountId,
-        total_amount: totalAmount,
+        subtotal_amount: subtotal,
+        discount_amount: discountAmount,
+        total_amount: finalTotal,
         shipping_address: dto.shipping_address,
         payment_method: dto.payment_method,
         comment: dto.comment || null,
       } as any, { transaction });
 
-      // 6. Создаем элементы заказа
+      // 6. Создаём элементы заказа
       for (const item of orderItemsData) {
         await this.orderItemRepository.create({
           id_order: order.id_order,
@@ -107,20 +127,24 @@ export class OrdersService {
         } as any, { transaction });
       }
 
-      // 7. Списываем товары со склада
+      // 7. Списываем товары
       for (const cartItem of cartItems) {
-        await this.productsService.createWriteOff(
+        await this.productsService.decreaseStockWithLock(
             cartItem.id_product,
-            order.id_order,
             cartItem.quantity,
-            `Продажа по заказу #${order.id_order}`
+            order.id_order,
+            transaction
         );
       }
 
       // 8. Помечаем товары в корзине как купленные
-      await this.cartService.purchaseCart(dto.id_buyer, dto.cartItemIds);
+      await this.cartService.purchaseCartWithTransaction(
+          dto.id_buyer,
+          dto.cartItemIds,
+          transaction
+      );
 
-      // 9. Добавляем начальный статус заказа
+      // 9. Добавляем начальный статус
       const initialStatus = await this.orderStatusRepository.findOne({
         where: { sort_order: 0 }
       });
@@ -134,32 +158,34 @@ export class OrdersService {
         } as any, { transaction });
       }
 
-      // 10. Фиксируем транзакцию
+      // 10. Увеличиваем счётчик использований скидки
+      if (discountId) {
+        await this.discountsService.incrementUsageCount(discountId, transaction);
+      }
+
       await transaction.commit();
 
-      // 11. Возвращаем созданный заказ с полной информацией
       return this.getOrderById(order.id_order);
 
     } catch (error) {
-      // Откатываем транзакцию в случае ошибки
       await transaction.rollback();
       throw error;
     }
   }
 
-  // Вспомогательный метод для применения скидки (опционально)
-  private applyDiscount(totalAmount: number, discount: any): number {
+  private calculateDiscountAmount(total: number, discount: any): number {
+    let discountAmount = 0;
+
     if (discount.type === 'percentage') {
-      const discountAmount = totalAmount * (discount.size / 100);
-      // Проверяем максимальную сумму скидки
+      discountAmount = total * (discount.size / 100);
       if (discount.max_discount_amount) {
-        return totalAmount - Math.min(discountAmount, discount.max_discount_amount);
+        discountAmount = Math.min(discountAmount, discount.max_discount_amount);
       }
-      return totalAmount - discountAmount;
     } else if (discount.type === 'fixed') {
-      return Math.max(0, totalAmount - discount.size);
+      discountAmount = discount.size;
     }
-    return totalAmount;
+
+    return Math.min(discountAmount, total);
   }
 
   async getAllOrders(statusId?: number, limit: number = 10, offset: number = 0) {
