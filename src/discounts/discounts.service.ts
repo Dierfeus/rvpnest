@@ -225,7 +225,25 @@ export class DiscountsService {
 
   async getProductsByDiscount(discountId: number) {
     const discount = await this.getDiscountById(discountId);
-    return discount.productDiscounts;
+    if (!discount) {
+      throw new HttpException('Скидка не найдена', HttpStatus.NOT_FOUND);
+    }
+    const productDiscounts = await this.productDiscountRepository.findAll({
+      where: { id_discount: discountId, is_active: true },
+      include: [{
+        association: 'product'
+      }]
+    });
+
+    const products = productDiscounts
+        .filter(pd => pd.product)
+        .map(pd => pd.product);
+    return {
+      discountId,
+      discountName: discount.name,
+      totalProducts: products.length,
+      products: products
+    };
   }
 
   async validateAndGetDiscount(discountId: number, orderAmount: number, userId: number) {

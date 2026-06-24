@@ -158,15 +158,24 @@ export class DiscountsController {
   @Delete(':discountId/products/:productId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
-  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Отвязать товар от скидки (Админ)'
   })
   @ApiParam({ name: 'discountId', type: 'number' })
   @ApiParam({ name: 'productId', type: 'number' })
-  @ApiOkResponse({ description: 'Товар отвязан от скидки' })
-  removeProductFromDiscount(
+  @ApiOkResponse({
+    description: 'Товар отвязан от скидки',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Товар с ID 5 успешно отвязан от скидки 3' }
+      }
+    }
+  })
+  @ApiNotFoundResponse({ description: 'Связь не найдена' })
+  @HttpCode(HttpStatus.OK)
+  async removeProductFromDiscount(
       @Param('discountId') discountId: number,
       @Param('productId') productId: number
   ) {
