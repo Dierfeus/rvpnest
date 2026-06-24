@@ -25,16 +25,16 @@ export class OrdersService {
   async createOrder(dto: any) {
     const userId = Number(dto.id_buyer);
 
-    const cartItemsRaw = await this.cartService.getCart(userId);
-    const cartItems = cartItemsRaw.map(i => i.get({ plain: true }));
+    // getCart теперь возвращает массив объектов, а не моделей
+    const cartItems = await this.cartService.getCart(userId);
 
-    if (!cartItems.length) {
+    if (!cartItems || cartItems.length === 0) {
       throw new HttpException('Корзина пуста', HttpStatus.BAD_REQUEST);
     }
 
     const stockCheck = await this.productsService.checkMultipleStock(
         cartItems.map(i => ({
-          productId: i.product.id_product,
+          productId: i.id_product,
           quantity: i.quantity,
         })),
     );
@@ -50,45 +50,73 @@ export class OrdersService {
     const orderItems: any[] = [];
 
     for (const item of cartItems) {
-      const product = await this.productsService.getOne(item.product.id_product);
+      const product = await this.productsService.getOne(item.id_product);
       const price = Number(product.price);
 
       subtotal += price * item.quantity;
 
       orderItems.push({
-        id_product: item.product.id_product,
+        id_product: item.id_product,
         quantity: item.quantity,
         price_at_time: price,
       });
     }
 
+    // Берем скидку из корзины
     let discountId: number | null = null;
     let discountAmount = 0;
     let finalTotal = subtotal;
 
+    // Проверяем есть ли скидка в корзине
     const cartDiscount = cartItems.find(i => i.id_discount);
 
     if (cartDiscount?.id_discount) {
-      const discount = await this.discountsService.validateAndGetDiscount(
-          cartDiscount.id_discount,
-          subtotal,
-          userId,
-      );
+      try {
+        const discount = await this.discountsService.getDiscountById(cartDiscount.id_discount);
 
-      if (discount) {
-        discountId = discount.id_discount;
-        discountAmount = cartItems.reduce(
-            (s, i) => s + Number(i.discount_amount || 0),
-            0,
-        );
-        finalTotal = subtotal - discountAmount;
+        if (discount && discount.is_active) {
+          const now = new Date();
+          const start = new Date(discount.start_time);
+          const end = new Date(discount.end_time);
+
+          // Проверяем срок действия
+          if (now >= start && now <= end) {
+            // Проверяем минимальную сумму
+            if (!discount.min_order_amount || subtotal >= Number(discount.min_order_amount)) {
+              discountId = discount.id_discount;
+
+              // Суммируем скидку из всех товаров корзины
+              discountAmount = cartItems.reduce(
+                  (s, i) => s + Number(i.discount_amount || 0),
+                  0,
+              );
+
+              // Если сумма скидки не распределена по товарам, рассчитываем общую
+              if (discountAmount === 0) {
+                let calculatedDiscount = 0;
+                if (discount.type === 'percentage') {
+                  calculatedDiscount = subtotal * (discount.size / 100);
+                  if (discount.max_discount_amount) {
+                    calculatedDiscount = Math.min(calculatedDiscount, Number(discount.max_discount_amount));
+                  }
+                } else if (discount.type === 'fixed') {
+                  calculatedDiscount = Math.min(discount.size, subtotal);
+                }
+                discountAmount = calculatedDiscount;
+              }
+
+              finalTotal = subtotal - discountAmount;
+            }
+          }
+        }
+      } catch (error) {
+        console.log('Error getting discount:', error);
       }
     }
 
     const transaction = await this.sequelize.transaction();
 
     try {
-      // 1. СОЗДАЕМ ЗАКАЗ
       const order = await this.orderRepository.create(
           {
             id_buyer: userId,
@@ -96,7 +124,7 @@ export class OrdersService {
             id_discount: discountId,
             subtotal_amount: subtotal,
             discount_amount: discountAmount,
-            total_amount: finalTotal,
+            total_amount: finalTotal < 0 ? 0 : finalTotal,
             shipping_address: dto.shipping_address,
             payment_method: dto.payment_method,
             comment: dto.comment || null,
@@ -104,46 +132,37 @@ export class OrdersService {
           { transaction },
       );
 
-      // ВАЖНО: Получаем ID заказа через dataValues или toJSON()
       const orderId = order.get('id_order') || order.dataValues?.id_order || order.id_order;
-
-      // Для отладки
-      console.log('Создан заказ с ID:', orderId);
-      console.log('Order object:', order.toJSON ? order.toJSON() : order);
 
       if (!orderId) {
         throw new HttpException('Не удалось получить ID созданного заказа', HttpStatus.INTERNAL_SERVER_ERROR);
       }
 
-      // 2. СОЗДАЕМ ЭЛЕМЕНТЫ ЗАКАЗА
       for (const item of orderItems) {
         await this.orderItemRepository.create(
             {
-              id_order: orderId,  // Используем сохраненный ID
+              id_order: orderId,
               ...item,
             } as any,
             { transaction },
         );
       }
 
-      // 3. УМЕНЬШАЕМ ОСТАТКИ ТОВАРОВ
       for (const item of cartItems) {
         await this.productsService.decreaseStockWithLock(
-            item.product.id_product,
+            item.id_product,
             item.quantity,
-            orderId,  // Передаем ID заказа
+            orderId,
             transaction,
         );
       }
 
-      // 4. ОЧИЩАЕМ КОРЗИНУ
       await this.cartService.purchaseCartWithTransaction(
           userId,
           cartItems.map(i => i.id_cart),
           transaction,
       );
 
-      // 5. СОЗДАЕМ ЗАПИСЬ О СТАТУСЕ
       const status = await this.orderStatusRepository.findOne({
         where: { sort_order: 0 },
       });
@@ -151,13 +170,18 @@ export class OrdersService {
       if (status) {
         await this.orderDeliveryRepository.create(
             {
-              id_order: orderId,  // Используем сохраненный ID
+              id_order: orderId,
               id_status: status.id_status,
               date: new Date(),
               comment: 'Заказ создан',
             } as any,
             { transaction },
         );
+      }
+
+      // Увеличиваем счетчик использований скидки
+      if (discountId) {
+        await this.discountsService.incrementUsageCount(discountId, transaction);
       }
 
       await transaction.commit();
