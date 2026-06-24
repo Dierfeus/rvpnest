@@ -110,11 +110,32 @@ export class DiscountsService {
   }
 
   async getDiscountByCode(code: string) {
+    const trimmedCode = code.trim();
+
     const discount = await this.discountRepository.findOne({
-      where: { code, is_active: true },
+      where: {
+        code: trimmedCode
+      },
       include: ['discountType', 'productDiscounts']
     });
-    return discount;
+
+    if (discount) {
+
+      return discount;
+    }
+
+    const allDiscounts = await this.discountRepository.findAll({
+      include: ['discountType', 'productDiscounts']
+    });
+
+    for (const d of allDiscounts) {
+      const dCode = d.getDataValue('code');
+      if (dCode && dCode.toUpperCase() === trimmedCode.toUpperCase()) {
+        return d;
+      }
+    }
+
+    return null;
   }
 
   async updateDiscount(id: number, dto: UpdateDiscountDto) {

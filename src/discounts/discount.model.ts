@@ -20,48 +20,48 @@ interface DiscountCreationAttrs {
 @Table({ tableName: 'discounts', timestamps: true })
 export class Discount extends Model<Discount, DiscountCreationAttrs> {
   @Column({ type: DataType.INTEGER, primaryKey: true, autoIncrement: true })
-  id_discount: number;
+  declare id_discount: number;
 
   @ForeignKey(() => DiscountType)
   @Column({ type: DataType.INTEGER })
-  id_discountsType: number;
+  declare id_discountsType: number;
 
   @Column({ type: DataType.STRING, allowNull: false })
-  name: string;
+  declare name: string;
 
   @Column({ type: DataType.STRING, allowNull: true, unique: true })
-  code: string;
+  declare code: string;
 
   @Column({ type: DataType.ENUM('percentage', 'fixed'), defaultValue: 'percentage' })
-  type: 'percentage' | 'fixed';
+  declare type: 'percentage' | 'fixed';
 
   @Column({ type: DataType.FLOAT, allowNull: false })
-  size: number;
+  declare size: number;
 
   @Column({ type: DataType.DATE, allowNull: false })
-  start_time: Date;
+  declare start_time: Date;
 
   @Column({ type: DataType.DATE, allowNull: false })
-  end_time: Date;
+  declare end_time: Date;
 
   @Column({ type: DataType.DECIMAL(10, 2), allowNull: true })
-  min_order_amount: number;
+  declare min_order_amount: number;
 
   @Column({ type: DataType.DECIMAL(10, 2), allowNull: true })
-  max_discount_amount: number;
+  declare max_discount_amount: number;
 
   @Column({ type: DataType.INTEGER, allowNull: true })
-  usage_limit: number;
+  declare usage_limit: number;
 
   @Column({ type: DataType.INTEGER, defaultValue: 0 })
-  used_count: number;
+  declare used_count: number;
 
   @Column({ type: DataType.BOOLEAN, defaultValue: true })
-  is_active: boolean;
+  declare is_active: boolean;
 
   @BelongsTo(() => DiscountType)
-  discountType: DiscountType;
+  declare discountType: DiscountType;
 
   @HasMany(() => ProductDiscount)
-  productDiscounts: ProductDiscount[];
+  declare productDiscounts: ProductDiscount[];
 }

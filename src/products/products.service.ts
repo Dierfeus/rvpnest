@@ -22,6 +22,10 @@ export class ProductsService {
   ) {}
 
   async getProductStock(productId: number): Promise<number> {
+    if (!productId) {
+      return 0;
+    }
+
     const totalEntrance = await this.entranceRepository.sum('quantity', {
       where: { id_product: productId }
     });
